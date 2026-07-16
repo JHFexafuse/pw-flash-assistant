@@ -9,7 +9,6 @@ fi
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 BIN_DIR="${HOME}/.local/bin"
 mkdir -p "${BIN_DIR}"
-chmod +x "${ROOT_DIR}/pwflash.sh" "${ROOT_DIR}/pwflash.py"
 ln -sfn "${ROOT_DIR}/pwflash.py" "${BIN_DIR}/pwflash"
 
 case ":${PATH}:" in
