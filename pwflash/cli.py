@@ -60,13 +60,25 @@ def select_profile(ui: UI, profiles: list[DeviceProfile], requested: str | None)
     return profiles[int(selected) - 1]
 
 
-def select_bitrate(ui: UI, profile: DeviceProfile, requested: int | None) -> int:
+def select_bitrate(
+    ui: UI,
+    profile: DeviceProfile,
+    requested: int | None,
+    *,
+    current: int | None = None,
+    interface: str = "can0",
+) -> int:
     rates = profile.hardware["supported_bitrates"]
     if requested is not None:
         if requested not in rates:
             raise AssistantError(f"{requested} wird von diesem Profil nicht angeboten.")
         return requested
-    options = [(str(index), f"{rate:,} Bit/s") for index, rate in enumerate(rates, start=1)]
+    options = []
+    for index, rate in enumerate(rates, start=1):
+        label = f"{rate:,} Bit/s"
+        if rate == current:
+            label = ui.highlight(f"{label}  ← aktuell auf {interface}")
+        options.append((str(index), label))
     options.extend([("b", "Zurück zum Hauptmenü"), ("q", "Beenden")])
     selected = ui.choose("CAN-Bitrate auswählen", options)
     if selected == "b":
@@ -128,7 +140,14 @@ def doctor(runner: Runner, interface: str) -> int:
 def run_install(args: argparse.Namespace, ui: UI, runner: Runner, profiles: list[DeviceProfile]) -> None:
     install_profiles = [profile for profile in profiles if "full" in profile.data.get("supported_modes", ["full", "klipper"])]
     profile = select_profile(ui, install_profiles, args.device)
-    bitrate = select_bitrate(ui, profile, args.bitrate)
+    current_bitrate = can_link_bitrate(runner, args.can_interface)
+    bitrate = select_bitrate(
+        ui,
+        profile,
+        args.bitrate,
+        current=current_bitrate,
+        interface=args.can_interface,
+    )
     mode = args.mode or "full"
     profile_sections = profile.data.get("mcu_sections", [])
     mcu_section = args.mcu_section or (str(profile_sections[0]) if profile_sections else "mcu")
@@ -215,11 +234,14 @@ def run_update(args: argparse.Namespace, ui: UI, runner: Runner, profiles: list[
     current_bitrate = can_link_bitrate(runner, args.can_interface)
     if args.bitrate is not None:
         bitrate = select_bitrate(ui, profile, args.bitrate)
-    elif current_bitrate in profile.hardware["supported_bitrates"]:
-        bitrate = int(current_bitrate)
-        ui.info(f"CAN-Bitrate wird von {args.can_interface} übernommen: {bitrate:,} Bit/s")
     else:
-        bitrate = select_bitrate(ui, profile, None)
+        bitrate = select_bitrate(
+            ui,
+            profile,
+            None,
+            current=current_bitrate,
+            interface=args.can_interface,
+        )
     workflow = FlashWorkflow(
         profile,
         bitrate,

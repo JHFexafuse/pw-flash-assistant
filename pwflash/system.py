@@ -33,21 +33,27 @@ class Runner:
         check: bool = True,
         capture: bool = False,
         env: dict[str, str] | None = None,
+        readonly: bool = False,
     ) -> Result:
         cmd = tuple(str(part) for part in command)
         if self.verbose or self.dry_run:
             print("  $ " + " ".join(cmd))
-        if self.dry_run:
+        if self.dry_run and not readonly:
             return Result(cmd, 0, "")
-        process = subprocess.run(
-            cmd,
-            cwd=cwd,
-            env=env,
-            text=True,
-            stdout=subprocess.PIPE if capture else None,
-            stderr=subprocess.STDOUT if capture else None,
-            check=False,
-        )
+        try:
+            process = subprocess.run(
+                cmd,
+                cwd=cwd,
+                env=env,
+                text=True,
+                stdout=subprocess.PIPE if capture else None,
+                stderr=subprocess.STDOUT if capture else None,
+                check=False,
+            )
+        except OSError as exc:
+            if readonly:
+                return Result(cmd, 127, str(exc))
+            raise
         output = process.stdout or ""
         if capture and self.verbose and output:
             print(output, end="")
@@ -85,7 +91,12 @@ def wait_for_single_usb(runner: Runner, usb_id: str, timeout: int = 180) -> int:
 
 
 def can_link_bitrate(runner: Runner, interface: str) -> int | None:
-    result = runner.run(["ip", "-details", "link", "show", interface], check=False, capture=True)
+    result = runner.run(
+        ["ip", "-details", "link", "show", interface],
+        check=False,
+        capture=True,
+        readonly=True,
+    )
     match = re.search(r"\bbitrate\s+(\d+)", result.stdout)
     return int(match.group(1)) if match else None
 

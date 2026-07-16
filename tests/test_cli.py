@@ -7,7 +7,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
-from pwflash.cli import main, matching_update_profiles
+from pwflash.cli import main, matching_update_profiles, select_bitrate
 from pwflash.profiles import load_profiles
 from pwflash.ui import UI
 
@@ -69,6 +69,22 @@ class ProfileFilteringTests(unittest.TestCase):
         names = [profile.name for profile in matching_update_profiles(load_profiles(ROOT / "devices"), "eddy")]
         self.assertEqual(2, len(names))
         self.assertTrue(all("Eddy Duo" in name for name in names))
+
+
+class BitrateSelectionTests(unittest.TestCase):
+    def test_current_can_bitrate_is_marked_in_selection(self) -> None:
+        profile = {item.id: item for item in load_profiles(ROOT / "devices")}["btt-ebb42-v1.2"]
+        output = io.StringIO()
+        with patch("builtins.input", return_value="3"), redirect_stdout(output):
+            selected = select_bitrate(
+                UI(plain=True),
+                profile,
+                None,
+                current=250000,
+                interface="can0",
+            )
+        self.assertEqual(250000, selected)
+        self.assertIn("250,000 Bit/s  ← aktuell auf can0", output.getvalue())
 
 
 class DryRunTests(unittest.TestCase):

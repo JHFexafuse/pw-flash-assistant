@@ -39,6 +39,9 @@ class UI:
     def info(self, text: str) -> None:
         self._wrapped(text, "  ")
 
+    def highlight(self, text: str) -> str:
+        return self._c("92;1", text)
+
     def ok(self, text: str) -> None:
         marker = "OK" if self.plain else "✓"
         print(self._c("92;1", f"  {marker} {text}"))
