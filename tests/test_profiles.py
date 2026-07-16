@@ -25,7 +25,7 @@ class ProfileTests(unittest.TestCase):
 
     def test_v12_does_not_request_printer_power_off(self) -> None:
         profiles = {profile.id: profile for profile in load_profiles(ROOT / "devices")}
-        instructions = " ".join(profiles["btt-ebb42-v1.2"].workflow["enter_dfu_steps"])
+        instructions = " ".join(profiles["btt-ebb42-v1.2"].workflow["enter_bootloader_steps"])
         self.assertNotIn("Drucker ausschalten", instructions)
         self.assertNotIn("trennen", instructions)
         self.assertIn("spannungsfreien EBB", instructions)

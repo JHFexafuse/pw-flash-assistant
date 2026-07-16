@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 
 from .config_update import find_canbus_uuid, update_canbus_uuid
+from .initial_flash import flash_initial_bootloader, initial_flash_config, required_commands
 from .kconfig import build_firmware
 from .profiles import DeviceProfile
 from .system import (
@@ -15,7 +16,7 @@ from .system import (
     parse_katapult_nodes,
     parse_klipper_nodes,
     require_linux,
-    wait_for_usb,
+    wait_for_single_usb,
 )
 from .ui import UI
 
@@ -55,7 +56,7 @@ class FlashWorkflow:
         self._preflight()
         if self.mode == "full":
             katapult_bin = self._build_katapult()
-            self._enter_dfu()
+            self._enter_initial_bootloader()
             self._flash_katapult(katapult_bin)
             self._move_to_can()
             uuid = self._find_katapult_uuid()
@@ -74,7 +75,7 @@ class FlashWorkflow:
         self.ui.info(f"MCU: {hw['mcu']}")
         self.ui.info(f"Ziel: CAN über {self.can_interface} mit {self.bitrate:,} Bit/s")
         if self.mode == "full":
-            self.ui.info("Ablauf: Katapult per USB/DFU installieren, danach Klipper per CAN flashen")
+            self.ui.info("Ablauf: Katapult über den profilabhängigen USB-Bootweg installieren, danach Klipper per CAN flashen")
             for warning in self.profile.data.get("safety_warnings", []):
                 self.ui.warn(str(warning))
         else:
@@ -85,15 +86,20 @@ class FlashWorkflow:
 
     def _preflight(self) -> None:
         self.ui.title("System prüfen")
-        required = ["git", "make", "dfu-util", "lsusb", "ip", "python3", "arm-none-eabi-gcc"]
+        required = ["git", "make", "lsusb", "ip", "python3", "arm-none-eabi-gcc"]
+        if self.mode == "full":
+            required.extend(required_commands(self.profile))
         missing = missing_commands(required)
         if missing and not self.runner.dry_run:
             self.ui.error("Es fehlen: " + ", ".join(missing))
             if self.ui.confirm("Fehlende Debian-Pakete jetzt installieren?"):
                 self.runner.run(["sudo", "apt-get", "update"])
-                self.runner.run(
-                    ["sudo", "apt-get", "install", "-y", "git", "make", "dfu-util", "usbutils", "iproute2", "python3", "gcc-arm-none-eabi"]
-                )
+                packages = ["git", "make", "usbutils", "iproute2", "python3", "gcc-arm-none-eabi"]
+                if "dfu-util" in required:
+                    packages.append("dfu-util")
+                if "g++" in required:
+                    packages.append("g++")
+                self.runner.run(["sudo", "apt-get", "install", "-y", *packages])
             remaining = missing_commands(required)
             if remaining:
                 raise AssistantError("Benötigte Programme fehlen weiterhin: " + ", ".join(remaining))
@@ -181,53 +187,52 @@ class FlashWorkflow:
         self.ui.ok("Katapult-Konfiguration wurde geprüft und frisch kompiliert.")
         return output
 
-    def _enter_dfu(self) -> None:
-        self.ui.title("EBB in den DFU-Modus bringen")
-        steps = self.profile.workflow["enter_dfu_steps"]
+    def _enter_initial_bootloader(self) -> None:
+        config = initial_flash_config(self.profile)
+        self.ui.title("Board in den USB-Bootmodus bringen")
+        steps = self.profile.workflow["enter_bootloader_steps"]
         for index, step in enumerate(steps, start=1):
             self.ui.instruction(index, str(step))
-        self.ui.pause("ENTER drücken; danach wartet das Tool auf das DFU-Gerät")
-        usb_id = self.profile.workflow.get("dfu_usb_id", "0483:df11")
-        if not wait_for_usb(self.runner, usb_id):
+        self.ui.pause("ENTER drücken; danach wartet das Tool auf das passende USB-Bootgerät")
+        usb_id = str(config["usb_id"])
+        count = wait_for_single_usb(self.runner, usb_id)
+        if count == 0:
             raise AssistantError(
-                f"Kein DFU-Gerät {usb_id} erkannt. USB-Kabel, Jumper und BOOT/RESET-Abfolge prüfen."
+                f"Kein USB-Bootgerät {usb_id} erkannt. USB-Kabel und BOOT-Abfolge prüfen."
             )
-        self.ui.ok(f"DFU-Gerät {usb_id} wurde erkannt.")
+        if count > 1:
+            raise AssistantError(
+                f"{count} USB-Bootgeräte mit der ID {usb_id} erkannt. "
+                "Für eine eindeutige Zuordnung darf nur das Zielgerät im Bootmodus verbunden sein."
+            )
+        self.ui.ok(f"Genau ein USB-Bootgerät {usb_id} wurde erkannt.")
 
     def _flash_katapult(self, firmware: Path) -> None:
+        config = initial_flash_config(self.profile)
         self.ui.title("Katapult installieren")
         self.ui.warn("Der nächste Schritt löscht den bisherigen Firmwarebereich des Boards.")
-        if not self.ui.confirm("Katapult jetzt auf dieses EBB schreiben?"):
+        if not self.ui.confirm(f"Katapult jetzt auf {self.profile.name} schreiben?"):
             raise AssistantError("Vor dem Flashen abgebrochen.")
-        result = self.runner.run(
-            [
-                "sudo",
-                "dfu-util",
-                "-R",
-                "-a",
-                "0",
-                "-s",
-                "0x08000000:mass-erase:force:leave",
-                "-D",
-                str(firmware),
-                "-d",
-                self.profile.workflow.get("dfu_usb_id", "0483:df11"),
-            ],
-            check=False,
-            capture=True,
+        result = flash_initial_bootloader(
+            self.runner,
+            self.profile,
+            firmware,
+            source_dir=self.katapult_dir,
+            saved_config=self.state_dir / "configs" / f"{self.profile.id}-katapult-{self.bitrate}.config",
         )
         if result.stdout:
             print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
         if result.returncode:
             transferred = "File downloaded successfully" in result.stdout
-            if result.returncode == 74 and transferred:
+            if config["method"] == "stm32-dfu" and result.returncode == 74 and transferred:
                 self.ui.warn(
                     "dfu-util meldet beim automatischen Neustart einen Statusfehler, obwohl das Image vollständig "
                     "übertragen wurde. Als installiert gilt Katapult erst nach der folgenden CAN-Prüfung."
                 )
             else:
                 raise AssistantError(
-                    f"Katapult-Übertragung fehlgeschlagen (dfu-util-Code {result.returncode})."
+                    f"Katapult-Übertragung mit {config['method']} fehlgeschlagen "
+                    f"(Rückgabecode {result.returncode})."
                 )
         else:
             self.ui.ok("Katapult-Image wurde vollständig übertragen; die Funktionsprüfung folgt am CAN-Bus.")
@@ -281,7 +286,7 @@ class FlashWorkflow:
     def _find_katapult_uuid(self) -> str:
         self.ui.title("Katapult am CAN-Bus suchen")
         self.ui.warn("Für diese Suche darf nur das neu installierte, noch nicht konfigurierte Katapult-Gerät antworten.")
-        if not self.ui.confirm("Ist das neue EBB das einzige unkonfigurierte Katapult-Gerät am Bus?"):
+        if not self.ui.confirm("Ist das neue Board das einzige unkonfigurierte Katapult-Gerät am Bus?"):
             raise AssistantError("CAN-Abfrage aus Sicherheitsgründen abgebrochen.")
         if self.runner.dry_run:
             return "000000000000"

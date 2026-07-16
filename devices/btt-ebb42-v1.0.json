@@ -17,9 +17,16 @@
     "Das neue EBB zunächst noch nicht anschließen. Am spannungsfreien Board USB_5V setzen und das EBB erst danach ausschließlich per Daten-USB anschließen."
   ],
   "workflow": {
-    "dfu_usb_id": "0483:df11",
+    "initial_flash": {
+      "method": "stm32-dfu",
+      "usb_id": "0483:df11",
+      "address": "0x08000000",
+      "alternate": 0,
+      "options": ["mass-erase", "force", "leave"],
+      "reset": true
+    },
     "klipper_service": "klipper",
-    "enter_dfu_steps": [
+    "enter_bootloader_steps": [
       "Das neue EBB noch nicht an USB, CAN oder 12/24 V anschließen.",
       "Am spannungsfreien EBB den Jumper USB_5V setzen.",
       "EBB mit einem Daten-USB-Kabel am Klipper-Rechner anschließen.",
@@ -34,6 +41,7 @@
   },
   "firmware": {
     "katapult": {
+      "output": "katapult.bin",
       "kconfig": [
         "CONFIG_MACH_STM32=y",
         "CONFIG_MACH_STM32F072=y",

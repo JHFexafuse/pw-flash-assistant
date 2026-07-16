@@ -35,7 +35,7 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--katapult-dir", type=Path, default=Path("~/katapult"))
     result.add_argument("--state-dir", type=Path, default=Path("~/.local/share/pwflash"))
     result.add_argument("--printer-config", type=Path, default=Path("~/printer_data/config/printer.cfg"))
-    result.add_argument("--mcu-section", default="CanHead", help="MCU-Abschnitt in printer.cfg")
+    result.add_argument("--mcu-section", help="MCU-Abschnitt in printer.cfg; ohne Angabe wird das Geräteprofil verwendet")
     result.add_argument("--profiles", type=Path, default=DEFAULT_PROFILE_DIR)
     result.add_argument("--dry-run", action="store_true", help="Ablauf zeigen, nichts ausführen")
     result.add_argument("--verbose", action="store_true")
@@ -117,7 +117,7 @@ def list_devices(profiles: list[DeviceProfile]) -> None:
 
 
 def doctor(runner: Runner, interface: str) -> int:
-    required = ["git", "make", "dfu-util", "lsusb", "ip", "python3", "arm-none-eabi-gcc"]
+    required = ["git", "make", "g++", "dfu-util", "lsusb", "ip", "python3", "arm-none-eabi-gcc"]
     missing = missing_commands(required)
     print("Programme: " + ("OK" if not missing else "FEHLT: " + ", ".join(missing)))
     bitrate = can_link_bitrate(runner, interface)
@@ -130,6 +130,8 @@ def run_install(args: argparse.Namespace, ui: UI, runner: Runner, profiles: list
     profile = select_profile(ui, install_profiles, args.device)
     bitrate = select_bitrate(ui, profile, args.bitrate)
     mode = args.mode or "full"
+    profile_sections = profile.data.get("mcu_sections", [])
+    mcu_section = args.mcu_section or (str(profile_sections[0]) if profile_sections else "mcu")
     workflow = FlashWorkflow(
         profile,
         bitrate,
@@ -139,7 +141,7 @@ def run_install(args: argparse.Namespace, ui: UI, runner: Runner, profiles: list
         katapult_dir=args.katapult_dir,
         state_dir=args.state_dir,
         printer_config=args.printer_config,
-        mcu_section=args.mcu_section,
+        mcu_section=mcu_section,
         mode=mode,
         can_interface=args.can_interface,
     )

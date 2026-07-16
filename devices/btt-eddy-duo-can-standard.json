@@ -3,7 +3,7 @@
   "id": "btt-eddy-duo-can-standard",
   "name": "BIGTREETECH Eddy Duo CAN (Klipper Standard)",
   "mcu_sections": ["eddy"],
-  "supported_modes": ["klipper"],
+  "supported_modes": ["full", "klipper"],
   "remove_host_extensions": [
     {
       "name": "eddy-ng",
@@ -28,10 +28,26 @@
   },
   "safety_warnings": [],
   "workflow": {
-    "klipper_service": "klipper"
+    "initial_flash": {
+      "method": "rp2040-bootsel",
+      "usb_id": "2e8a:0003",
+      "make_target": "flash"
+    },
+    "klipper_service": "klipper",
+    "enter_bootloader_steps": [
+      "Das neue Eddy Duo noch nicht an USB oder CAN anschließen.",
+      "BOOT gedrückt halten und das Eddy Duo währenddessen per Daten-USB mit dem Klipper-Rechner verbinden.",
+      "BOOT loslassen, sobald das Board verbunden ist."
+    ],
+    "connect_can_steps": [
+      "USB-Kabel abziehen.",
+      "CAN-H, CAN-L, GND und 5-V-Versorgung entsprechend der Eddy-Duo-CAN-Belegung anschließen.",
+      "Drucker beziehungsweise Eddy Duo einschalten."
+    ]
   },
   "firmware": {
     "katapult": {
+      "output": "katapult.uf2",
       "kconfig": [
         "CONFIG_LOW_LEVEL_OPTIONS=y",
         "CONFIG_MACH_RPXXXX=y",

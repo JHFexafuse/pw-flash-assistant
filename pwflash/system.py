@@ -66,20 +66,22 @@ def missing_commands(names: Iterable[str]) -> list[str]:
     return [name for name in names if shutil.which(name) is None]
 
 
-def usb_device_present(runner: Runner, usb_id: str) -> bool:
+def usb_device_count(runner: Runner, usb_id: str) -> int:
     result = runner.run(["lsusb"], check=False, capture=True)
-    return usb_id.lower() in result.stdout.lower()
+    expected = usb_id.lower()
+    return sum(1 for line in result.stdout.lower().splitlines() if expected in line)
 
 
-def wait_for_usb(runner: Runner, usb_id: str, timeout: int = 180) -> bool:
+def wait_for_single_usb(runner: Runner, usb_id: str, timeout: int = 180) -> int:
     if runner.dry_run:
-        return True
+        return 1
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        if usb_device_present(runner, usb_id):
-            return True
+        count = usb_device_count(runner, usb_id)
+        if count:
+            return count
         time.sleep(1)
-    return False
+    return 0
 
 
 def can_link_bitrate(runner: Runner, interface: str) -> int | None:

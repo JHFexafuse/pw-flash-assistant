@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -64,6 +65,31 @@ def validate_profile(data: dict[str, Any], source: Path) -> None:
     rates = data["hardware"].get("supported_bitrates")
     if not isinstance(rates, list) or not rates or not all(isinstance(rate, int) for rate in rates):
         raise ProfileError(f"{source}: hardware.supported_bitrates ist ungültig")
+    modes = data.get("supported_modes", ["full", "klipper"])
+    if "full" in modes:
+        for steps_key in ("enter_bootloader_steps", "connect_can_steps"):
+            steps = data["workflow"].get(steps_key)
+            if not isinstance(steps, list) or not steps:
+                raise ProfileError(f"{source}: workflow.{steps_key} fehlt für die Erstinstallation")
+        initial = data["workflow"].get("initial_flash")
+        if not isinstance(initial, dict):
+            raise ProfileError(f"{source}: workflow.initial_flash fehlt für die Erstinstallation")
+        method = initial.get("method")
+        if method not in {"stm32-dfu", "rp2040-bootsel"}:
+            raise ProfileError(f"{source}: unbekannte Erstflash-Methode {method!r}")
+        usb_id = initial.get("usb_id")
+        if not isinstance(usb_id, str) or not re.fullmatch(r"[0-9a-fA-F]{4}:[0-9a-fA-F]{4}", usb_id):
+            raise ProfileError(f"{source}: ungültige USB-ID für die Erstinstallation")
+        output = data["firmware"]["katapult"].get("output")
+        if not isinstance(output, str) or not output:
+            raise ProfileError(f"{source}: firmware.katapult.output fehlt für die Erstinstallation")
+        if method == "stm32-dfu":
+            if not isinstance(initial.get("address"), str):
+                raise ProfileError(f"{source}: STM32-DFU benötigt eine Flashadresse")
+            if not output.endswith(".bin"):
+                raise ProfileError(f"{source}: STM32-DFU erwartet ein BIN-Artefakt")
+        if method == "rp2040-bootsel" and not output.endswith(".uf2"):
+            raise ProfileError(f"{source}: RP2040-BOOTSEL erwartet ein UF2-Artefakt")
 
 
 def load_profiles(directory: Path) -> list[DeviceProfile]:

@@ -5,7 +5,7 @@ import shutil
 from pathlib import Path
 
 from .profiles import DeviceProfile
-from .system import AssistantError, Runner
+from .system import AssistantError, Result, Runner
 
 
 def write_seed_config(path: Path, lines: list[str]) -> None:
@@ -54,11 +54,39 @@ def build_firmware(
             shutil.copyfile(active_config, config_path)
         runner.run(["make", "clean"], cwd=source_dir)
         runner.run(["make", f"-j{max(1, os.cpu_count() or 1)}"], cwd=source_dir)
-        output_name = "katapult.bin" if firmware == "katapult" else "klipper.bin"
+        firmware_config = profile.data["firmware"][firmware]
+        output_name = str(
+            firmware_config.get("output", "katapult.bin" if firmware == "katapult" else "klipper.bin")
+        )
         output = source_dir / "out" / output_name
         if not output.is_file() and not runner.dry_run:
             raise AssistantError(f"Erwartete Firmware wurde nicht erzeugt: {output}")
         return output
+    finally:
+        if not runner.dry_run:
+            if had_config and previous_config is not None:
+                active_config.write_bytes(previous_config)
+            else:
+                active_config.unlink(missing_ok=True)
+
+
+def run_make_target_with_config(
+    runner: Runner,
+    *,
+    source_dir: Path,
+    config_path: Path,
+    target: str,
+) -> Result:
+    if not config_path.is_file() and not runner.dry_run:
+        raise AssistantError(f"Gespeicherte Firmware-Konfiguration fehlt: {config_path}")
+    active_config = source_dir / ".config"
+    previous_config = active_config.read_bytes() if active_config.is_file() and not runner.dry_run else None
+    had_config = active_config.is_file()
+    try:
+        if not runner.dry_run:
+            shutil.copyfile(config_path, active_config)
+        runner.run(["make", "olddefconfig"], cwd=source_dir)
+        return runner.run(["make", target], cwd=source_dir, check=False, capture=True)
     finally:
         if not runner.dry_run:
             if had_config and previous_config is not None:
