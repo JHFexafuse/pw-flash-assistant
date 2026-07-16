@@ -25,7 +25,7 @@ class InteractiveMenuTests(unittest.TestCase):
         return result, output.getvalue()
 
     def test_board_list_returns_to_main_menu(self) -> None:
-        result, output = self.run_menu(["3", "", "q"])
+        result, output = self.run_menu(["4", "", "q"])
         self.assertEqual(0, result)
         self.assertIn("btt-ebb42-v1.2", output)
         self.assertEqual(2, output.count("\nHauptmenü\n"))
@@ -43,6 +43,12 @@ class InteractiveMenuTests(unittest.TestCase):
             result, output = self.run_menu(["2", "b", "q"], ["--printer-config", str(printer)])
         self.assertEqual(0, result)
         self.assertIn("Vorhandenes CAN-Bauteil aktualisieren", output)
+        self.assertEqual(2, output.count("\nHauptmenü\n"))
+
+    def test_back_from_multibed_returns_to_main_menu(self) -> None:
+        result, output = self.run_menu(["3", "b", "q"])
+        self.assertEqual(0, result)
+        self.assertIn("Multibed-Unterstützung verwalten", output)
         self.assertEqual(2, output.count("\nHauptmenü\n"))
 
 
