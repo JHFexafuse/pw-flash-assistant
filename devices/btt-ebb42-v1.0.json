@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "id": "btt-ebb42-v1.0",
+  "name": "BIGTREETECH EBB42 V1.0",
+  "hardware": {
+    "manufacturer": "BIGTREETECH",
+    "board": "EBB42",
+    "revision": "1.0",
+    "mcu": "STM32F072",
+    "clock": "8 MHz crystal",
+    "can_pins": "PB8/PB9",
+    "bootloader_offset": "8 KiB",
+    "supported_bitrates": [1000000, 500000, 250000]
+  },
+  "safety_warnings": [
+    "Während des Flashens dürfen Heizung und Motoren nicht versorgt werden. Das EBB ausschließlich über USB speisen."
+  ],
+  "workflow": {
+    "dfu_usb_id": "0483:df11",
+    "klipper_service": "klipper",
+    "enter_dfu_steps": [
+      "Drucker ausschalten und das EBB vollständig von 12/24 V sowie vom CAN-Kabel trennen.",
+      "Den Jumper USB_5V setzen. Dadurch wird das EBB für diesen Schritt über USB versorgt.",
+      "EBB mit einem Daten-USB-Kabel am Klipper-Rechner anschließen.",
+      "BOOT gedrückt halten, RESET kurz drücken und wieder loslassen, danach BOOT loslassen."
+    ],
+    "connect_can_steps": [
+      "USB-Kabel abziehen.",
+      "Jumper USB_5V unbedingt entfernen.",
+      "CAN-H, CAN-L, GND und Versorgung korrekt anschließen. Nur bei einem Busende den 120-Ohm-Abschluss setzen.",
+      "Drucker beziehungsweise EBB einschalten."
+    ]
+  },
+  "firmware": {
+    "katapult": {
+      "kconfig": [
+        "CONFIG_MACH_STM32=y",
+        "CONFIG_MACH_STM32F072=y",
+        "CONFIG_STM32_CLOCK_REF_8M=y",
+        "CONFIG_STM32_MMENU_CANBUS_PB8_PB9=y",
+        "CONFIG_STM32_APP_START_2000=y",
+        "CONFIG_CANBUS_FREQUENCY={bitrate}",
+        "CONFIG_ENABLE_DOUBLE_RESET=y",
+        "CONFIG_ENABLE_LED=y",
+        "CONFIG_STATUS_LED_PIN=\"PA14\""
+      ]
+    },
+    "klipper": {
+      "kconfig": [
+        "CONFIG_LOW_LEVEL_OPTIONS=y",
+        "CONFIG_MACH_STM32=y",
+        "CONFIG_MACH_STM32F072=y",
+        "CONFIG_STM32_FLASH_START_2000=y",
+        "CONFIG_STM32_CLOCK_REF_8M=y",
+        "CONFIG_STM32_MMENU_CANBUS_PB8_PB9=y",
+        "CONFIG_CANBUS_FREQUENCY={bitrate}"
+      ]
+    }
+  }
+}

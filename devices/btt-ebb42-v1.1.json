@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "id": "btt-ebb42-v1.1",
+  "name": "BIGTREETECH EBB42 V1.1",
+  "hardware": {
+    "manufacturer": "BIGTREETECH",
+    "board": "EBB42",
+    "revision": "1.1",
+    "mcu": "STM32G0B1",
+    "clock": "8 MHz crystal",
+    "can_pins": "PB0/PB1",
+    "bootloader_offset": "8 KiB",
+    "supported_bitrates": [1000000, 500000, 250000]
+  },
+  "safety_warnings": [
+    "WICHTIG BEI V1.1: Im STM32-DFU-Modus kann PA2 auf HIGH gehen. PA2 steuert auf dieser Revision den Hotend-MOSFET. Deshalb 12/24-V-VIN und die Heizung vollständig trennen und das Board ausschließlich über USB speisen."
+  ],
+  "workflow": {
+    "dfu_usb_id": "0483:df11",
+    "klipper_service": "klipper",
+    "enter_dfu_steps": [
+      "Drucker ausschalten. 12/24-V-VIN, Hotend und CAN-Kabel vollständig vom EBB trennen.",
+      "Den Jumper USB_5V setzen. Das Board darf jetzt ausschließlich über USB versorgt werden.",
+      "EBB mit einem Daten-USB-Kabel am Klipper-Rechner anschließen.",
+      "BOOT gedrückt halten, RESET kurz drücken und wieder loslassen, danach BOOT loslassen."
+    ],
+    "connect_can_steps": [
+      "USB-Kabel abziehen.",
+      "Jumper USB_5V unbedingt entfernen.",
+      "CAN-H, CAN-L, GND und Versorgung korrekt anschließen. Nur bei einem Busende den 120-Ohm-Abschluss setzen.",
+      "Drucker beziehungsweise EBB einschalten."
+    ]
+  },
+  "firmware": {
+    "katapult": {
+      "kconfig": [
+        "CONFIG_MACH_STM32=y",
+        "CONFIG_MACH_STM32G0B1=y",
+        "CONFIG_STM32_CLOCK_REF_8M=y",
+        "CONFIG_STM32_MMENU_CANBUS_PB0_PB1=y",
+        "CONFIG_STM32_APP_START_2000=y",
+        "CONFIG_CANBUS_FREQUENCY={bitrate}",
+        "CONFIG_ENABLE_DOUBLE_RESET=y",
+        "CONFIG_ENABLE_LED=y",
+        "CONFIG_STATUS_LED_PIN=\"PA13\""
+      ]
+    },
+    "klipper": {
+      "kconfig": [
+        "CONFIG_LOW_LEVEL_OPTIONS=y",
+        "CONFIG_MACH_STM32=y",
+        "CONFIG_MACH_STM32G0B1=y",
+        "CONFIG_STM32_FLASH_START_2000=y",
+        "CONFIG_STM32_CLOCK_REF_8M=y",
+        "CONFIG_STM32_MMENU_CANBUS_PB0_PB1=y",
+        "CONFIG_CANBUS_FREQUENCY={bitrate}"
+      ]
+    }
+  }
+}
