@@ -1,6 +1,6 @@
 # PrintWars Flash Assistant
 
-Ein geführter, KIAUH-artiger Terminalassistent für Klipper-Druckerboards. Unterstützt werden derzeit das BIGTREETECH EBB42 V1.0, V1.1 und V1.2 sowie Eddy Duo über CAN.
+Ein geführter, KIAUH-artiger Terminalassistent für Wartung und Erweiterung von Klipper-Druckern. Unterstützt werden derzeit das BIGTREETECH EBB42 V1.0, V1.1 und V1.2, Eddy Duo über CAN sowie PrintWars-Multibed.
 
 ## Ziel
 
@@ -62,6 +62,26 @@ bash install.sh
 
 Die gespeicherten Gerätezuordnungen unter `~/.local/share/pwflash/` bleiben dabei erhalten.
 
+## Multibed-Unterstützung
+
+Der Menüpunkt **Multibed-Unterstützung verwalten** erkennt ein vorhandenes `[heater_bed]` und weitere Zonen wie `[heater_generic _Bed_2]` automatisch in den Druckerkonfigurationen. Anschließend kann er eine kleine Klipper-Erweiterung installieren, ihren Status anzeigen oder sie wieder entfernen.
+
+Die Erweiterung synchronisiert:
+
+- `M140` auf alle erkannten Bettzonen;
+- `M190` auf alle Bettzonen und wartet auf jede einzelne Zone;
+- `SET_HEATER_TEMPERATURE HEATER=heater_bed` auf alle weiteren Bettzonen, damit auch die Hauptbett-Steuerung in Mainsail funktioniert.
+
+Die Pin-, Sensor- und PID-Konfigurationen der Heizflächen werden bewusst nicht automatisch erzeugt. Sie sind hardwarespezifisch und müssen bereits als Klipper-Heizzonen vorhanden sein. Erkennt der Assistent den alten `Klipper-Multibed-Support`-Kernpatch, bietet er eine geführte Migration an: Die veränderten Klipper-Dateien werden gesichert und aus dem aktuell ausgecheckten Klipper-Stand wiederhergestellt, bevor die neue Erweiterung installiert wird.
+
+Direkter Aufruf und gefahrloser Test:
+
+```bash
+pwflash multibed
+pwflash multibed --multibed-action install --dry-run --plain
+pwflash multibed --multibed-action status
+```
+
 ## Testlauf ohne Hardwareänderungen
 
 ```bash
@@ -88,6 +108,7 @@ Neue Profile werden beim Start automatisch gefunden und validiert. STM32-DFU und
 pwflash list
 pwflash validate
 pwflash doctor
+pwflash multibed
 ```
 
 ## Sicherheitsprinzipien

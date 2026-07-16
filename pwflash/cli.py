@@ -6,6 +6,7 @@ from pathlib import Path
 
 from . import __version__
 from .inventory import CanMcu, DeviceInventory, discover_can_mcus
+from .multibed import MultibedManager, run_multibed_menu
 from .profiles import DeviceProfile, ProfileError, load_profiles
 from .system import AssistantError, Runner, can_link_bitrate, missing_commands
 from .ui import UI
@@ -26,7 +27,12 @@ class ExitRequested(Exception):
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description="Geführter Firmware-Assistent für Klipper-Druckerboards")
-    result.add_argument("command", nargs="?", choices=["install", "update", "list", "validate", "doctor"], help="Aktion")
+    result.add_argument(
+        "command",
+        nargs="?",
+        choices=["install", "update", "multibed", "list", "validate", "doctor"],
+        help="Aktion",
+    )
     result.add_argument("--device", help="Geräteprofil-ID")
     result.add_argument("--bitrate", type=int, help="CAN-Bitrate")
     result.add_argument("--mode", choices=["full", "klipper"], help="Erstinstallation oder nur Klipper aktualisieren")
@@ -40,6 +46,7 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--dry-run", action="store_true", help="Ablauf zeigen, nichts ausführen")
     result.add_argument("--verbose", action="store_true")
     result.add_argument("--plain", action="store_true", help="Keine Farben und kein Bildschirmleeren")
+    result.add_argument("--multibed-action", choices=["install", "status", "remove"])
     result.add_argument("--version", action="version", version=__version__)
     return result
 
@@ -115,8 +122,9 @@ def interactive_command(ui: UI) -> str:
         [
             ("1", "Board geführt installieren"),
             ("2", "Vorhandenes CAN-Bauteil aktualisieren"),
-            ("3", "Unterstützte Boards anzeigen"),
-            ("4", "System prüfen"),
+            ("3", "Multibed-Unterstützung verwalten"),
+            ("4", "Unterstützte Boards anzeigen"),
+            ("5", "System prüfen"),
             ("q", "Beenden"),
         ],
     )
@@ -258,18 +266,46 @@ def run_update(args: argparse.Namespace, ui: UI, runner: Runner, profiles: list[
     workflow.run()
 
 
+def multibed_manager(args: argparse.Namespace, ui: UI, runner: Runner) -> MultibedManager:
+    return MultibedManager(
+        runner=runner,
+        ui=ui,
+        root=ROOT,
+        klipper_dir=args.klipper_dir,
+        printer_config=args.printer_config,
+    )
+
+
+def run_multibed(args: argparse.Namespace, ui: UI, runner: Runner) -> None:
+    manager = multibed_manager(args, ui, runner)
+    action = args.multibed_action
+    if action is None:
+        selected = run_multibed_menu(manager)
+        if selected == "b":
+            return
+        if selected == "q":
+            raise ExitRequested
+        action = {"1": "install", "2": "status", "3": "remove"}[selected]
+    if action == "install":
+        manager.install()
+    elif action == "status":
+        manager.status()
+    else:
+        manager.remove()
+
+
 def interactive_loop(args: argparse.Namespace, ui: UI, runner: Runner, profiles: list[DeviceProfile]) -> int:
     while True:
         selected = interactive_command(ui)
         if selected == "q":
             return 0
-        if selected == "3":
+        if selected == "4":
             ui.header("Unterstützte Boards")
             ui.title("Unterstützte Boards")
             list_devices(profiles)
             ui.pause("ENTER drücken für das Hauptmenü")
             continue
-        if selected == "4":
+        if selected == "5":
             ui.header("Systemprüfung")
             ui.title("Systemprüfung")
             doctor(runner, args.can_interface)
@@ -278,8 +314,16 @@ def interactive_loop(args: argparse.Namespace, ui: UI, runner: Runner, profiles:
         try:
             if selected == "1":
                 run_install(args, ui, runner, profiles)
-            else:
+            elif selected == "2":
                 run_update(args, ui, runner, profiles)
+            else:
+                manager = multibed_manager(args, ui, runner)
+                action = run_multibed_menu(manager)
+                if action == "b":
+                    continue
+                if action == "q":
+                    return 0
+                {"1": manager.install, "2": manager.status, "3": manager.remove}[action]()
             ui.pause("ENTER drücken für das Hauptmenü")
         except BackToMenu:
             continue
@@ -304,6 +348,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if command == "doctor":
             return doctor(runner, args.can_interface)
+        if command == "multibed":
+            run_multibed(args, ui, runner)
+            return 0
         if command == "update":
             run_update(args, ui, runner, profiles)
         else:
