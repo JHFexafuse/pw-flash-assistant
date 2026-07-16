@@ -28,6 +28,7 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("command", nargs="?", choices=["install", "list", "validate", "doctor"], help="Aktion")
     result.add_argument("--device", help="Geräteprofil-ID")
     result.add_argument("--bitrate", type=int, help="CAN-Bitrate")
+    result.add_argument("--mode", choices=["full", "klipper"], help="Erstinstallation oder nur Klipper aktualisieren")
     result.add_argument("--can-interface", default="can0")
     result.add_argument("--klipper-dir", type=Path, default=Path("~/klipper"))
     result.add_argument("--katapult-dir", type=Path, default=Path("~/katapult"))
@@ -74,6 +75,25 @@ def select_bitrate(ui: UI, profile: DeviceProfile, requested: int | None) -> int
     return rates[int(selected) - 1]
 
 
+def select_mode(ui: UI, requested: str | None) -> str:
+    if requested:
+        return requested
+    selected = ui.choose(
+        "Installationsart auswählen",
+        [
+            ("1", "Neues Board: Katapult per USB und danach Klipper per CAN installieren"),
+            ("2", "Katapult ist bereits installiert: nur Klipper per CAN aktualisieren"),
+            ("b", "Zurück zum Hauptmenü"),
+            ("q", "Beenden"),
+        ],
+    )
+    if selected == "b":
+        raise BackToMenu
+    if selected == "q":
+        raise ExitRequested
+    return {"1": "full", "2": "klipper"}[selected]
+
+
 def interactive_command(ui: UI) -> str:
     ui.header()
     ui.title("Hauptmenü")
@@ -106,6 +126,7 @@ def doctor(runner: Runner, interface: str) -> int:
 def run_install(args: argparse.Namespace, ui: UI, runner: Runner, profiles: list[DeviceProfile]) -> None:
     profile = select_profile(ui, profiles, args.device)
     bitrate = select_bitrate(ui, profile, args.bitrate)
+    mode = select_mode(ui, args.mode)
     workflow = FlashWorkflow(
         profile,
         bitrate,
@@ -116,6 +137,7 @@ def run_install(args: argparse.Namespace, ui: UI, runner: Runner, profiles: list
         state_dir=args.state_dir,
         printer_config=args.printer_config,
         mcu_section=args.mcu_section,
+        mode=mode,
         can_interface=args.can_interface,
     )
     workflow.run()

@@ -31,6 +31,12 @@ class InteractiveMenuTests(unittest.TestCase):
         self.assertIn("b) Zurück zum Hauptmenü", output)
         self.assertEqual(2, output.count("\nHauptmenü\n"))
 
+    def test_installation_mode_can_return_to_main_menu(self) -> None:
+        result, output = self.run_menu(["1", "3", "1", "b", "q"])
+        self.assertEqual(0, result)
+        self.assertIn("Katapult ist bereits installiert", output)
+        self.assertEqual(2, output.count("\nHauptmenü\n"))
+
 
 if __name__ == "__main__":
     unittest.main()

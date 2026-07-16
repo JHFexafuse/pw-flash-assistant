@@ -6,17 +6,24 @@ Ein geführter, KIAUH-artiger Terminalassistent für Klipper-Druckerboards. Die 
 
 Der Assistent trennt physische Arbeitsschritte und automatische Prüfungen. Er zeigt immer nur den nächsten sicheren Schritt, wartet auf die Bestätigung und prüft anschließend den erwarteten Hardwarezustand.
 
-Der aktuelle EBB42-Ablauf:
+Der Assistent bietet zwei getrennte EBB42-Abläufe:
+
+- **Erstinstallation:** Katapult per USB/DFU installieren und anschließend Klipper per CAN flashen.
+- **Klipper-Aktualisierung:** vorhandenes Katapult unverändert lassen und ausschließlich Klipper per CAN flashen.
+
+Erstinstallation:
 
 1. Boardrevision und CAN-Bitrate auswählen.
 2. Katapult mit dem passenden MCU-, Pin- und Offsetprofil kompilieren.
-3. Stromversorgung trennen und `USB_5V` setzen.
+3. Am noch nicht angeschlossenen, spannungsfreien Board `USB_5V` setzen und es danach ausschließlich per Daten-USB anschließen.
 4. BOOT halten, RESET kurz drücken und BOOT loslassen.
 5. DFU-Gerät automatisch erkennen und Katapult schreiben.
 6. USB entfernen, `USB_5V` entfernen und Board am CAN-Bus anschließen.
 7. CAN-Bitrate prüfen und genau eine Katapult-UUID ermitteln.
 8. Klipper mit 8-KiB-Offset kompilieren und über CAN schreiben.
-9. Fertigen `[mcu EBBCan]`-Abschnitt erzeugen.
+9. UUID auf Wunsch mit Backup, Zeitstempel und alter ID direkt in `[mcu CanHead]` der `printer.cfg` aktualisieren.
+
+Bei der Klipper-Aktualisierung werden die USB-/DFU-/Katapult-Schritte vollständig übersprungen. Das Flashwerkzeug fordert das laufende Klipper über CAN zum Sprung in das bereits vorhandene Katapult auf.
 
 ## Installation
 
@@ -34,6 +41,7 @@ Es wird bewusst nicht als `root` gestartet. Benötigte administrative Schritte f
 
 ```bash
 pwflash install --device btt-ebb42-v1.2 --bitrate 1000000 --dry-run --verbose
+pwflash install --device btt-ebb42-v1.2 --bitrate 250000 --mode klipper
 ```
 
 ## Weitere Boards hinzufügen

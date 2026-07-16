@@ -33,6 +33,7 @@ class FlashWorkflow:
         state_dir: Path,
         printer_config: Path,
         mcu_section: str,
+        mode: str,
         can_interface: str = "can0",
     ) -> None:
         self.profile = profile
@@ -44,6 +45,7 @@ class FlashWorkflow:
         self.state_dir = state_dir.expanduser()
         self.printer_config = printer_config.expanduser()
         self.mcu_section = mcu_section
+        self.mode = mode
         self.can_interface = can_interface
 
     def run(self) -> None:
@@ -51,11 +53,15 @@ class FlashWorkflow:
             require_linux()
         self._summary()
         self._preflight()
-        katapult_bin = self._build_katapult()
-        self._enter_dfu()
-        self._flash_katapult(katapult_bin)
-        self._move_to_can()
-        uuid = self._find_katapult_uuid()
+        if self.mode == "full":
+            katapult_bin = self._build_katapult()
+            self._enter_dfu()
+            self._flash_katapult(katapult_bin)
+            self._move_to_can()
+            uuid = self._find_katapult_uuid()
+        else:
+            self._verify_can_bitrate()
+            uuid = self._existing_klipper_uuid()
         klipper_bin = self._build_klipper()
         self._flash_klipper(uuid, klipper_bin)
         self._finish(uuid)
@@ -67,8 +73,13 @@ class FlashWorkflow:
         self.ui.info(f"Board: {self.profile.name}")
         self.ui.info(f"MCU: {hw['mcu']}")
         self.ui.info(f"Ziel: CAN über {self.can_interface} mit {self.bitrate:,} Bit/s")
-        for warning in self.profile.data.get("safety_warnings", []):
-            self.ui.warn(str(warning))
+        if self.mode == "full":
+            self.ui.info("Ablauf: Katapult per USB/DFU installieren, danach Klipper per CAN flashen")
+            for warning in self.profile.data.get("safety_warnings", []):
+                self.ui.warn(str(warning))
+        else:
+            self.ui.info("Ablauf: Vorhandenes Katapult verwenden und ausschließlich Klipper per CAN aktualisieren")
+            self.ui.warn("Katapult wird in diesem Modus nicht neu installiert oder überschrieben.")
         if not self.ui.confirm("Sind Boardversion und Sicherheitsangaben korrekt?", default=False):
             raise AssistantError("Vom Benutzer abgebrochen.")
 
@@ -174,6 +185,11 @@ class FlashWorkflow:
         for index, step in enumerate(self.profile.workflow["connect_can_steps"], start=1):
             self.ui.instruction(index, str(step))
         self.ui.pause()
+        self._verify_can_bitrate()
+
+    def _verify_can_bitrate(self) -> None:
+        if self.mode != "full":
+            self.ui.title("CAN-Verbindung prüfen")
         current = can_link_bitrate(self.runner, self.can_interface)
         if not self.runner.dry_run and current != self.bitrate:
             actual = "nicht aktiv" if current is None else f"{current:,} Bit/s"
@@ -182,6 +198,25 @@ class FlashWorkflow:
                 "Die CAN-Konfiguration muss vor dem Flashen übereinstimmen."
             )
         self.ui.ok(f"{self.can_interface} verwendet die erwartete Bitrate.")
+
+    def _existing_klipper_uuid(self) -> str:
+        self.ui.title("Vorhandenes Katapult verwenden")
+        try:
+            uuid = find_canbus_uuid(self.printer_config, self.mcu_section)
+        except AssistantError as exc:
+            raise AssistantError(
+                f"Die Ziel-UUID konnte nicht aus {self.printer_config} gelesen werden: {exc} "
+                "Für ein neues oder noch nicht konfiguriertes Board bitte die Erstinstallation wählen."
+            ) from exc
+        self.ui.info(f"Zielabschnitt: [mcu {self.mcu_section}]")
+        self.ui.info(f"CAN-UUID: {uuid}")
+        if not self.ui.confirm(
+            "Ist dies das Board mit bereits installiertem Katapult, dessen Klipper-Firmware aktualisiert werden soll?",
+            default=False,
+        ):
+            raise AssistantError("Klipper-Aktualisierung vom Benutzer abgebrochen.")
+        self.ui.ok("Katapult bleibt unverändert; das Flashwerkzeug fordert den Bootloader automatisch über CAN an.")
+        return uuid
 
     def _query_nodes(self) -> list[tuple[str, str]]:
         tool = self.katapult_dir / "scripts" / "flashtool.py"
