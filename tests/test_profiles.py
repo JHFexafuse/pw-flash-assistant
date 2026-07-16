@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class ProfileTests(unittest.TestCase):
     def test_all_profiles_validate(self) -> None:
         profiles = load_profiles(ROOT / "devices")
-        self.assertEqual(3, len(profiles))
+        self.assertEqual(5, len(profiles))
 
     def test_v11_has_hotend_warning(self) -> None:
         profiles = {profile.id: profile for profile in load_profiles(ROOT / "devices")}
@@ -30,6 +30,17 @@ class ProfileTests(unittest.TestCase):
         self.assertNotIn("trennen", instructions)
         self.assertIn("spannungsfreien EBB", instructions)
         self.assertLess(instructions.index("USB_5V"), instructions.index("Daten-USB"))
+
+    def test_eddy_duo_ng_uses_can_katapult_offset_and_extension(self) -> None:
+        profiles = {profile.id: profile for profile in load_profiles(ROOT / "devices")}
+        profile = profiles["btt-eddy-duo-can-eddy-ng"]
+        config = profile.config_lines("klipper", 250000)
+        self.assertIn("CONFIG_MACH_RP2040=y", config)
+        self.assertIn("CONFIG_RPXXXX_FLASH_START_4000=y", config)
+        self.assertIn("CONFIG_RPXXXX_CANBUS_GPIO_RX=4", config)
+        self.assertIn("CONFIG_RPXXXX_CANBUS_GPIO_TX=5", config)
+        self.assertIn("CONFIG_CANBUS_FREQUENCY=250000", config)
+        self.assertEqual("eddy-ng", profile.data["host_extension"]["name"])
 
     def test_bitrate_is_rendered(self) -> None:
         profile = load_profiles(ROOT / "devices")[0]

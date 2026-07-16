@@ -113,7 +113,62 @@ class FlashWorkflow:
             self.ui.ok(f"Katapult ist aktuell (Revision {revision}).")
         if not self.klipper_dir.exists() and not self.runner.dry_run:
             raise AssistantError(f"Klipper wurde nicht unter {self.klipper_dir} gefunden. Bitte zuerst Klipper installieren.")
+        self._prepare_host_extension()
         self.ui.ok("Grundvoraussetzungen sind erfüllt.")
+
+    def _prepare_host_extension(self) -> None:
+        for conflict in self.profile.data.get("remove_host_extensions", []):
+            markers = [self.klipper_dir / str(item) for item in conflict.get("markers", [])]
+            if not any(marker.exists() for marker in markers):
+                continue
+            name = str(conflict["name"])
+            path = Path(str(conflict["path"])).expanduser()
+            self.ui.title(f"Standardvariante ohne {name} vorbereiten")
+            if not self.runner.dry_run and not self.ui.confirm(
+                f"{name} ist in Klipper eingebunden, ausgewählt wurde aber die Standardvariante. {name} jetzt entfernen?",
+                default=True,
+            ):
+                raise AssistantError(f"Standard-Firmware wird nicht mit aktivem {name} gebaut.")
+            installer = path / str(conflict.get("installer", "install.py"))
+            if not self.runner.dry_run and not installer.is_file():
+                raise AssistantError(f"{name} kann nicht sauber entfernt werden; Installer fehlt: {installer}")
+            self.runner.run(["python3", str(installer), "--uninstall", str(self.klipper_dir)])
+            if not self.runner.dry_run and any(marker.exists() for marker in markers):
+                raise AssistantError(f"{name} wurde nicht vollständig aus Klipper entfernt.")
+            self.ui.ok(f"{name} wurde vor dem Standard-Firmwarebuild entfernt.")
+        extension = self.profile.data.get("host_extension")
+        if not isinstance(extension, dict):
+            return
+        name = str(extension["name"])
+        path = Path(str(extension["path"])).expanduser()
+        repository = str(extension["repository"])
+        self.ui.title(f"Erweiterung {name} vorbereiten")
+        if not path.exists():
+            if not self.runner.dry_run and not self.ui.confirm(
+                f"{name} ist noch nicht installiert. Jetzt aus dem Hersteller-Repository laden?",
+                default=True,
+            ):
+                raise AssistantError(f"{name} wird für dieses Firmwareprofil benötigt.")
+            self.runner.run(["git", "clone", repository, str(path)])
+        if not self.runner.dry_run and not (path / ".git").is_dir():
+            raise AssistantError(f"{path} ist kein Git-Checkout; {name} kann nicht sicher aktualisiert werden.")
+        self.runner.run(["git", "-C", str(path), "pull", "--ff-only"])
+        if not self.runner.dry_run and not self.ui.confirm(
+            f"{name} jetzt in Klipper einbinden, bevor die Firmware kompiliert wird?",
+            default=True,
+        ):
+            raise AssistantError(f"Ohne {name} wird die Firmware nicht gebaut.")
+        installer = path / str(extension.get("installer", "install.py"))
+        self.runner.run(["python3", str(installer), str(self.klipper_dir)])
+        if not self.runner.dry_run:
+            missing = [item for item in extension.get("verify", []) if not (self.klipper_dir / str(item)).exists()]
+            if missing:
+                raise AssistantError(f"{name}-Installation unvollständig; fehlt: {', '.join(missing)}")
+        revision = self.runner.run(
+            ["git", "-C", str(path), "rev-parse", "--short", "HEAD"],
+            capture=True,
+        ).stdout.strip()
+        self.ui.ok(f"{name} ist vor dem Firmwarebuild eingebunden" + (f" (Revision {revision})." if revision else "."))
 
     def _build_katapult(self) -> Path:
         self.ui.title("Katapult vorbereiten")

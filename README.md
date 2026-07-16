@@ -6,10 +6,10 @@ Ein geführter, KIAUH-artiger Terminalassistent für Klipper-Druckerboards. Die 
 
 Der Assistent trennt physische Arbeitsschritte und automatische Prüfungen. Er zeigt immer nur den nächsten sicheren Schritt, wartet auf die Bestätigung und prüft anschließend den erwarteten Hardwarezustand.
 
-Der Assistent bietet zwei getrennte EBB42-Abläufe:
+Der Assistent trennt zwei Arbeitsaufträge:
 
-- **Erstinstallation:** Katapult per USB/DFU installieren und anschließend Klipper per CAN flashen.
-- **Klipper-Aktualisierung:** vorhandenes Katapult unverändert lassen und ausschließlich Klipper per CAN flashen.
+- **INSTALL:** Neues Board erstmals einrichten; beim EBB42 Katapult per USB/DFU und anschließend Klipper per CAN installieren.
+- **UPDATE:** Vorhandene CAN-Komponente aus der Druckerkonfiguration auswählen, Katapult unverändert lassen und ausschließlich deren Klipper-Firmware aktualisieren.
 
 Erstinstallation:
 
@@ -24,6 +24,8 @@ Erstinstallation:
 9. UUID auf Wunsch mit Backup, Zeitstempel und alter ID direkt in `[mcu CanHead]` der `printer.cfg` aktualisieren.
 
 Bei der Klipper-Aktualisierung werden die USB-/DFU-/Katapult-Schritte vollständig übersprungen. Das Flashwerkzeug fordert das laufende Klipper über CAN zum Sprung in das bereits vorhandene Katapult auf.
+
+Der UPDATE-Arbeitsauftrag liest alle `[mcu ...]`-Abschnitte mit `canbus_uuid` aus `printer.cfg` und den weiteren CFG-Dateien. Die einmal bestätigte Zuordnung aus MCU-Abschnitt, UUID und Hardware-/Softwareprofil wird unter `~/.local/share/pwflash/inventory.json` gespeichert. Unterstützt werden EBB42 V1.0–V1.2 sowie Eddy Duo CAN mit Klipper Standard oder eddy-ng. Beim eddy-ng-Profil wird die Erweiterung vor dem Firmwarebuild aktualisiert und erneut in Klipper eingebunden.
 
 ## Installation
 
@@ -41,7 +43,7 @@ Es wird bewusst nicht als `root` gestartet. Benötigte administrative Schritte f
 
 ```bash
 pwflash install --device btt-ebb42-v1.2 --bitrate 1000000 --dry-run --verbose
-pwflash install --device btt-ebb42-v1.2 --bitrate 250000 --mode klipper
+pwflash update
 ```
 
 ## Weitere Boards hinzufügen

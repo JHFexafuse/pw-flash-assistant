@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
+from .inventory import CanMcu, DeviceInventory, discover_can_mcus
 from .profiles import DeviceProfile, ProfileError, load_profiles
 from .system import AssistantError, Runner, can_link_bitrate, missing_commands
 from .ui import UI
@@ -25,7 +26,7 @@ class ExitRequested(Exception):
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description="Geführter Firmware-Assistent für Klipper-Druckerboards")
-    result.add_argument("command", nargs="?", choices=["install", "list", "validate", "doctor"], help="Aktion")
+    result.add_argument("command", nargs="?", choices=["install", "update", "list", "validate", "doctor"], help="Aktion")
     result.add_argument("--device", help="Geräteprofil-ID")
     result.add_argument("--bitrate", type=int, help="CAN-Bitrate")
     result.add_argument("--mode", choices=["full", "klipper"], help="Erstinstallation oder nur Klipper aktualisieren")
@@ -51,7 +52,7 @@ def select_profile(ui: UI, profiles: list[DeviceProfile], requested: str | None)
         raise AssistantError(f"Unbekanntes Geräteprofil: {requested}")
     options = [(str(index), profile.name) for index, profile in enumerate(profiles, start=1)]
     options.extend([("b", "Zurück zum Hauptmenü"), ("q", "Beenden")])
-    selected = ui.choose("Boardversion auswählen", options)
+    selected = ui.choose("Geräteprofil auswählen", options)
     if selected == "b":
         raise BackToMenu
     if selected == "q":
@@ -101,8 +102,9 @@ def interactive_command(ui: UI) -> str:
         "Aktion",
         [
             ("1", "Board geführt installieren"),
-            ("2", "Unterstützte Boards anzeigen"),
-            ("3", "System prüfen"),
+            ("2", "Vorhandenes CAN-Bauteil aktualisieren"),
+            ("3", "Unterstützte Boards anzeigen"),
+            ("4", "System prüfen"),
             ("q", "Beenden"),
         ],
     )
@@ -124,9 +126,10 @@ def doctor(runner: Runner, interface: str) -> int:
 
 
 def run_install(args: argparse.Namespace, ui: UI, runner: Runner, profiles: list[DeviceProfile]) -> None:
-    profile = select_profile(ui, profiles, args.device)
+    install_profiles = [profile for profile in profiles if "full" in profile.data.get("supported_modes", ["full", "klipper"])]
+    profile = select_profile(ui, install_profiles, args.device)
     bitrate = select_bitrate(ui, profile, args.bitrate)
-    mode = select_mode(ui, args.mode)
+    mode = args.mode or "full"
     workflow = FlashWorkflow(
         profile,
         bitrate,
@@ -143,25 +146,94 @@ def run_install(args: argparse.Namespace, ui: UI, runner: Runner, profiles: list
     workflow.run()
 
 
+def select_can_mcu(ui: UI, devices: list[CanMcu]) -> CanMcu:
+    options = [
+        (str(index), f"{device.section} – UUID {device.uuid} – {device.config_path.name}")
+        for index, device in enumerate(devices, start=1)
+    ]
+    options.extend([("b", "Zurück zum Hauptmenü"), ("q", "Beenden")])
+    selected = ui.choose("CAN-Bauteil auswählen", options)
+    if selected == "b":
+        raise BackToMenu
+    if selected == "q":
+        raise ExitRequested
+    return devices[int(selected) - 1]
+
+
+def run_update(args: argparse.Namespace, ui: UI, runner: Runner, profiles: list[DeviceProfile]) -> None:
+    ui.header("Vorhandenes CAN-Bauteil aktualisieren")
+    ui.title("CAN-Geräte aus der Druckerkonfiguration")
+    devices = discover_can_mcus(args.printer_config)
+    if not devices:
+        raise AssistantError("Keine MCU mit canbus_uuid in den Druckerkonfigurationen gefunden.")
+    device = select_can_mcu(ui, devices)
+    inventory = DeviceInventory(args.state_dir.expanduser() / "inventory.json")
+    entry = inventory.find(device)
+    by_id = {profile.id: profile for profile in profiles}
+    profile = by_id.get(entry.profile_id) if entry and entry.uuid == device.uuid else None
+    if profile is None:
+        if entry and entry.uuid != device.uuid:
+            ui.warn(
+                f"Die UUID von [mcu {device.section}] hat sich von {entry.uuid} auf {device.uuid} geändert. "
+                "Die Hardwarezuordnung muss erneut bestätigt werden."
+            )
+        update_profiles = [
+            item for item in profiles if "klipper" in item.data.get("supported_modes", ["full", "klipper"])
+        ]
+        profile = select_profile(ui, update_profiles, args.device)
+        ui.info(f"Zuordnung: [mcu {device.section}] / {device.uuid} → {profile.name}")
+        if not ui.confirm("Diese Gerätezuordnung dauerhaft speichern?", default=True):
+            raise AssistantError("Ohne bestätigte Gerätezuordnung wird kein Update ausgeführt.")
+        inventory.bind(device, profile.id)
+        ui.ok("Gerätezuordnung wurde gespeichert.")
+    else:
+        ui.ok(f"Gespeicherte Zuordnung: [mcu {device.section}] → {profile.name}")
+    current_bitrate = can_link_bitrate(runner, args.can_interface)
+    if args.bitrate is not None:
+        bitrate = select_bitrate(ui, profile, args.bitrate)
+    elif current_bitrate in profile.hardware["supported_bitrates"]:
+        bitrate = int(current_bitrate)
+        ui.info(f"CAN-Bitrate wird von {args.can_interface} übernommen: {bitrate:,} Bit/s")
+    else:
+        bitrate = select_bitrate(ui, profile, None)
+    workflow = FlashWorkflow(
+        profile,
+        bitrate,
+        runner=runner,
+        ui=ui,
+        klipper_dir=args.klipper_dir,
+        katapult_dir=args.katapult_dir,
+        state_dir=args.state_dir,
+        printer_config=device.config_path,
+        mcu_section=device.section,
+        mode="klipper",
+        can_interface=args.can_interface,
+    )
+    workflow.run()
+
+
 def interactive_loop(args: argparse.Namespace, ui: UI, runner: Runner, profiles: list[DeviceProfile]) -> int:
     while True:
         selected = interactive_command(ui)
         if selected == "q":
             return 0
-        if selected == "2":
+        if selected == "3":
             ui.header("Unterstützte Boards")
             ui.title("Unterstützte Boards")
             list_devices(profiles)
             ui.pause("ENTER drücken für das Hauptmenü")
             continue
-        if selected == "3":
+        if selected == "4":
             ui.header("Systemprüfung")
             ui.title("Systemprüfung")
             doctor(runner, args.can_interface)
             ui.pause("ENTER drücken für das Hauptmenü")
             continue
         try:
-            run_install(args, ui, runner, profiles)
+            if selected == "1":
+                run_install(args, ui, runner, profiles)
+            else:
+                run_update(args, ui, runner, profiles)
             ui.pause("ENTER drücken für das Hauptmenü")
         except BackToMenu:
             continue
@@ -186,7 +258,10 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if command == "doctor":
             return doctor(runner, args.can_interface)
-        run_install(args, ui, runner, profiles)
+        if command == "update":
+            run_update(args, ui, runner, profiles)
+        else:
+            run_install(args, ui, runner, profiles)
         return 0
     except (AssistantError, ProfileError, BackToMenu, ExitRequested, KeyboardInterrupt) as exc:
         ui.error(str(exc) if str(exc) else "Abgebrochen.")
