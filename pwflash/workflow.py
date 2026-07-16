@@ -80,7 +80,7 @@ class FlashWorkflow:
         else:
             self.ui.info("Ablauf: Vorhandenes Katapult verwenden und ausschließlich Klipper per CAN aktualisieren")
             self.ui.warn("Katapult wird in diesem Modus nicht neu installiert oder überschrieben.")
-        if not self.ui.confirm("Sind Boardversion und Sicherheitsangaben korrekt?", default=False):
+        if not self.ui.confirm("Sind Boardversion und Sicherheitsangaben korrekt?"):
             raise AssistantError("Vom Benutzer abgebrochen.")
 
     def _preflight(self) -> None:
@@ -89,7 +89,7 @@ class FlashWorkflow:
         missing = missing_commands(required)
         if missing and not self.runner.dry_run:
             self.ui.error("Es fehlen: " + ", ".join(missing))
-            if self.ui.confirm("Fehlende Debian-Pakete jetzt installieren?", default=True):
+            if self.ui.confirm("Fehlende Debian-Pakete jetzt installieren?"):
                 self.runner.run(["sudo", "apt-get", "update"])
                 self.runner.run(
                     ["sudo", "apt-get", "install", "-y", "git", "make", "dfu-util", "usbutils", "iproute2", "python3", "gcc-arm-none-eabi"]
@@ -98,7 +98,7 @@ class FlashWorkflow:
             if remaining:
                 raise AssistantError("Benötigte Programme fehlen weiterhin: " + ", ".join(remaining))
         if not self.katapult_dir.exists():
-            if self.runner.dry_run or self.ui.confirm("Katapult ist noch nicht vorhanden. Jetzt laden?", default=True):
+            if self.runner.dry_run or self.ui.confirm("Katapult ist noch nicht vorhanden. Jetzt laden?"):
                 self.runner.run(["git", "clone", "https://github.com/Arksine/katapult.git", str(self.katapult_dir)])
         if not self.runner.dry_run and not (self.katapult_dir / ".git").is_dir():
             raise AssistantError(
@@ -126,7 +126,6 @@ class FlashWorkflow:
             self.ui.title(f"Standardvariante ohne {name} vorbereiten")
             if not self.runner.dry_run and not self.ui.confirm(
                 f"{name} ist in Klipper eingebunden, ausgewählt wurde aber die Standardvariante. {name} jetzt entfernen?",
-                default=True,
             ):
                 raise AssistantError(f"Standard-Firmware wird nicht mit aktivem {name} gebaut.")
             installer = path / str(conflict.get("installer", "install.py"))
@@ -146,7 +145,6 @@ class FlashWorkflow:
         if not path.exists():
             if not self.runner.dry_run and not self.ui.confirm(
                 f"{name} ist noch nicht installiert. Jetzt aus dem Hersteller-Repository laden?",
-                default=True,
             ):
                 raise AssistantError(f"{name} wird für dieses Firmwareprofil benötigt.")
             self.runner.run(["git", "clone", repository, str(path)])
@@ -155,7 +153,6 @@ class FlashWorkflow:
         self.runner.run(["git", "-C", str(path), "pull", "--ff-only"])
         if not self.runner.dry_run and not self.ui.confirm(
             f"{name} jetzt in Klipper einbinden, bevor die Firmware kompiliert wird?",
-            default=True,
         ):
             raise AssistantError(f"Ohne {name} wird die Firmware nicht gebaut.")
         installer = path / str(extension.get("installer", "install.py"))
@@ -200,7 +197,7 @@ class FlashWorkflow:
     def _flash_katapult(self, firmware: Path) -> None:
         self.ui.title("Katapult installieren")
         self.ui.warn("Der nächste Schritt löscht den bisherigen Firmwarebereich des Boards.")
-        if not self.ui.confirm("Katapult jetzt auf dieses EBB schreiben?", default=False):
+        if not self.ui.confirm("Katapult jetzt auf dieses EBB schreiben?"):
             raise AssistantError("Vor dem Flashen abgebrochen.")
         result = self.runner.run(
             [
@@ -267,7 +264,6 @@ class FlashWorkflow:
         self.ui.info(f"CAN-UUID: {uuid}")
         if not self.ui.confirm(
             "Ist dies das Board mit bereits installiertem Katapult, dessen Klipper-Firmware aktualisiert werden soll?",
-            default=False,
         ):
             raise AssistantError("Klipper-Aktualisierung vom Benutzer abgebrochen.")
         self.ui.ok("Katapult bleibt unverändert; das Flashwerkzeug fordert den Bootloader automatisch über CAN an.")
@@ -285,7 +281,7 @@ class FlashWorkflow:
     def _find_katapult_uuid(self) -> str:
         self.ui.title("Katapult am CAN-Bus suchen")
         self.ui.warn("Für diese Suche darf nur das neu installierte, noch nicht konfigurierte Katapult-Gerät antworten.")
-        if not self.ui.confirm("Ist das neue EBB das einzige unkonfigurierte Katapult-Gerät am Bus?", default=False):
+        if not self.ui.confirm("Ist das neue EBB das einzige unkonfigurierte Katapult-Gerät am Bus?"):
             raise AssistantError("CAN-Abfrage aus Sicherheitsgründen abgebrochen.")
         if self.runner.dry_run:
             return "000000000000"
@@ -306,12 +302,14 @@ class FlashWorkflow:
             firmware="klipper",
             bitrate=self.bitrate,
         )
-        self.ui.ok("Klipper wurde mit passendem 8-KiB-Offset kompiliert.")
+        self.ui.ok(
+            f"Klipper wurde mit passendem {self.profile.hardware['bootloader_offset']}-Offset kompiliert."
+        )
         return output
 
     def _flash_klipper(self, uuid: str, firmware: Path) -> None:
         self.ui.title("Klipper über CAN installieren")
-        if not self.ui.confirm(f"Klipper jetzt auf {uuid} schreiben?", default=False):
+        if not self.ui.confirm(f"Klipper jetzt auf {uuid} schreiben?"):
             raise AssistantError("Vor dem Klipper-Flashen abgebrochen.")
         service = self.profile.workflow.get("klipper_service", "klipper")
         tool = self.katapult_dir / "scripts" / "flashtool.py"
@@ -370,21 +368,16 @@ class FlashWorkflow:
         if not self.runner.dry_run and self.printer_config.is_file():
             try:
                 old_uuid = find_canbus_uuid(self.printer_config, self.mcu_section)
-                if old_uuid == uuid:
-                    self.ui.ok(f"[mcu {self.mcu_section}] enthält bereits diese UUID.")
-                else:
-                    self.ui.info(f"Aktuelle UUID in [mcu {self.mcu_section}]: {old_uuid}")
-                    self.ui.info(f"Neue UUID: {uuid}")
-                    if self.ui.confirm(
-                        f"UUID direkt in {self.printer_config} aktualisieren und vorher ein Backup anlegen?",
-                        default=True,
-                    ):
-                        update = update_canbus_uuid(self.printer_config, self.mcu_section, uuid)
-                        self.ui.ok(f"printer.cfg aktualisiert. Backup: {update.backup_path}")
-                        if self.ui.confirm("Klipper-Dienst jetzt neu starten, damit die neue UUID aktiv wird?", default=True):
-                            self.runner.run(["sudo", "systemctl", "restart", self.profile.workflow.get("klipper_service", "klipper")])
-                            self.ui.ok("Klipper-Dienst wurde neu gestartet.")
+                self.ui.info(f"Bisher aktive UUID in [mcu {self.mcu_section}]: {old_uuid}")
+                update = update_canbus_uuid(self.printer_config, self.mcu_section, uuid)
+                self.ui.ok(
+                    "UUID-Eintrag mit aktuellem Zeitstempel und höchstens einem Vorgänger aktualisiert. "
+                    f"Backup: {update.backup_path}"
+                )
+                if self.ui.confirm("Klipper-Dienst jetzt neu starten, damit der aktualisierte Eintrag aktiv wird?"):
+                    self.runner.run(["sudo", "systemctl", "restart", self.profile.workflow.get("klipper_service", "klipper")])
+                    self.ui.ok("Klipper-Dienst wurde neu gestartet.")
             except AssistantError as exc:
                 self.ui.warn(f"printer.cfg wurde nicht automatisch geändert: {exc}")
         self.ui.info(f"MCU-Konfiguration: {config_path}")
-        self.ui.info("Diese Datei kann nun in die Druckerkonfiguration übernommen und um die EBB-Pinbelegung ergänzt werden.")
+        self.ui.info("Die erzeugte MCU-Datei dient zusätzlich als Referenz für diese Gerätezuordnung.")

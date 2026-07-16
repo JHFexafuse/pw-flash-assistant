@@ -21,11 +21,13 @@ Erstinstallation:
 6. USB entfernen, `USB_5V` entfernen und Board am CAN-Bus anschließen.
 7. CAN-Bitrate prüfen und genau eine Katapult-UUID ermitteln.
 8. Klipper mit 8-KiB-Offset kompilieren und über CAN schreiben.
-9. UUID auf Wunsch mit Backup, Zeitstempel und alter ID direkt in `[mcu CanHead]` der `printer.cfg` aktualisieren.
+9. UUID mit Backup und aktuellem Zeitstempel direkt im gewählten `[mcu ...]`-Abschnitt aktualisieren; genau eine vorherige UUID samt vorhandenem Zeitstempel bleibt als Kommentar erhalten.
 
 Bei der Klipper-Aktualisierung werden die USB-/DFU-/Katapult-Schritte vollständig übersprungen. Das Flashwerkzeug fordert das laufende Klipper über CAN zum Sprung in das bereits vorhandene Katapult auf.
 
-Der UPDATE-Arbeitsauftrag liest alle `[mcu ...]`-Abschnitte mit `canbus_uuid` aus `printer.cfg` und den weiteren CFG-Dateien. Die einmal bestätigte Zuordnung aus MCU-Abschnitt, UUID und Hardware-/Softwareprofil wird unter `~/.local/share/pwflash/inventory.json` gespeichert. Unterstützt werden EBB42 V1.0–V1.2 sowie Eddy Duo CAN mit Klipper Standard oder eddy-ng. Beim eddy-ng-Profil wird die Erweiterung vor dem Firmwarebuild aktualisiert und erneut in Klipper eingebunden.
+Der UPDATE-Arbeitsauftrag liest alle `[mcu ...]`-Abschnitte mit `canbus_uuid` aus `printer.cfg` und den weiteren CFG-Dateien. Nach der MCU-Auswahl zeigt er ausschließlich dazu passende Geräteprofile an: bei `[mcu CanHead]` die EBB42-Varianten, bei `[mcu eddy]` die beiden Eddy-Duo-Varianten. Die einmal bestätigte Zuordnung aus MCU-Abschnitt, UUID und Hardware-/Softwareprofil wird unter `~/.local/share/pwflash/inventory.json` gespeichert. Unterstützt werden EBB42 V1.0–V1.2 sowie Eddy Duo CAN mit Klipper Standard oder eddy-ng. Beim eddy-ng-Profil wird die Erweiterung vor dem Firmwarebuild aktualisiert und erneut in Klipper eingebunden.
+
+Bestätigungsfragen verlangen ausdrücklich `j` oder `n`; eine leere Eingabe löst keine Aktion aus.
 
 ## Installation
 

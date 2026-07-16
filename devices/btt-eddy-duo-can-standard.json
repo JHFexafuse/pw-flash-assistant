@@ -2,6 +2,7 @@
   "schema_version": 1,
   "id": "btt-eddy-duo-can-standard",
   "name": "BIGTREETECH Eddy Duo CAN (Klipper Standard)",
+  "mcu_sections": ["eddy"],
   "supported_modes": ["klipper"],
   "remove_host_extensions": [
     {

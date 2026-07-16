@@ -160,6 +160,18 @@ def select_can_mcu(ui: UI, devices: list[CanMcu]) -> CanMcu:
     return devices[int(selected) - 1]
 
 
+def matching_update_profiles(profiles: list[DeviceProfile], section: str) -> list[DeviceProfile]:
+    return [
+        item
+        for item in profiles
+        if "klipper" in item.data.get("supported_modes", ["full", "klipper"])
+        and section.casefold() in {
+            str(configured_section).casefold()
+            for configured_section in item.data.get("mcu_sections", [])
+        }
+    ]
+
+
 def run_update(args: argparse.Namespace, ui: UI, runner: Runner, profiles: list[DeviceProfile]) -> None:
     ui.header("Vorhandenes CAN-Bauteil aktualisieren")
     ui.title("CAN-Geräte aus der Druckerkonfiguration")
@@ -177,12 +189,14 @@ def run_update(args: argparse.Namespace, ui: UI, runner: Runner, profiles: list[
                 f"Die UUID von [mcu {device.section}] hat sich von {entry.uuid} auf {device.uuid} geändert. "
                 "Die Hardwarezuordnung muss erneut bestätigt werden."
             )
-        update_profiles = [
-            item for item in profiles if "klipper" in item.data.get("supported_modes", ["full", "klipper"])
-        ]
+        update_profiles = matching_update_profiles(profiles, device.section)
+        if not update_profiles:
+            raise AssistantError(
+                f"Für den MCU-Abschnitt [mcu {device.section}] ist noch kein passendes Geräteprofil hinterlegt."
+            )
         profile = select_profile(ui, update_profiles, args.device)
         ui.info(f"Zuordnung: [mcu {device.section}] / {device.uuid} → {profile.name}")
-        if not ui.confirm("Diese Gerätezuordnung dauerhaft speichern?", default=True):
+        if not ui.confirm("Diese Gerätezuordnung dauerhaft speichern?"):
             raise AssistantError("Ohne bestätigte Gerätezuordnung wird kein Update ausgeführt.")
         inventory.bind(device, profile.id)
         ui.ok("Gerätezuordnung wurde gespeichert.")

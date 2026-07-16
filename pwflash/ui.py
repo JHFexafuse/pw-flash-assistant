@@ -73,12 +73,10 @@ class UI:
                     return key
             self.error("Bitte eine der angezeigten Optionen wählen.")
 
-    def confirm(self, prompt: str, *, default: bool = False) -> bool:
-        suffix = "[j/n, ENTER = ja]" if default else "[j/n, ENTER = nein]"
+    def confirm(self, prompt: str) -> bool:
+        suffix = "[j/n]"
         while True:
             answer = input(f"\n{prompt} {suffix}: ").strip().lower()
-            if not answer:
-                return default
             if answer in {"j", "ja", "y", "yes"}:
                 return True
             if answer in {"n", "nein", "no"}:

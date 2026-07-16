@@ -7,7 +7,8 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
-from pwflash.cli import main
+from pwflash.cli import main, matching_update_profiles
+from pwflash.profiles import load_profiles
 from pwflash.ui import UI
 
 
@@ -45,15 +46,28 @@ class InteractiveMenuTests(unittest.TestCase):
 
 
 class ConfirmationTests(unittest.TestCase):
-    def test_enter_uses_visible_recommended_yes_default(self) -> None:
-        with patch("builtins.input", return_value="") as ask:
-            answer = UI(plain=True).confirm("Erweiterung installieren?", default=True)
+    def test_enter_is_not_a_confirmation(self) -> None:
+        with patch("builtins.input", side_effect=["", "j"]) as ask:
+            answer = UI(plain=True).confirm("Erweiterung installieren?")
         self.assertTrue(answer)
-        ask.assert_called_once_with("\nErweiterung installieren? [j/n, ENTER = ja]: ")
+        self.assertEqual(2, ask.call_count)
+        ask.assert_called_with("\nErweiterung installieren? [j/n]: ")
 
-    def test_enter_uses_no_for_safety_default(self) -> None:
-        with patch("builtins.input", return_value=""):
-            self.assertFalse(UI(plain=True).confirm("Firmware schreiben?", default=False))
+    def test_explicit_no_is_required_for_rejection(self) -> None:
+        with patch("builtins.input", side_effect=["", "n"]):
+            self.assertFalse(UI(plain=True).confirm("Firmware schreiben?"))
+
+
+class ProfileFilteringTests(unittest.TestCase):
+    def test_canhead_lists_only_ebb_profiles(self) -> None:
+        names = [profile.name for profile in matching_update_profiles(load_profiles(ROOT / "devices"), "CanHead")]
+        self.assertEqual(3, len(names))
+        self.assertTrue(all("EBB42" in name for name in names))
+
+    def test_eddy_lists_only_eddy_profiles(self) -> None:
+        names = [profile.name for profile in matching_update_profiles(load_profiles(ROOT / "devices"), "eddy")]
+        self.assertEqual(2, len(names))
+        self.assertTrue(all("Eddy Duo" in name for name in names))
 
 
 if __name__ == "__main__":

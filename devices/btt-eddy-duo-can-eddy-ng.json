@@ -2,6 +2,7 @@
   "schema_version": 1,
   "id": "btt-eddy-duo-can-eddy-ng",
   "name": "BIGTREETECH Eddy Duo CAN (eddy-ng)",
+  "mcu_sections": ["eddy"],
   "supported_modes": ["klipper"],
   "host_extension": {
     "name": "eddy-ng",
