@@ -13,13 +13,13 @@
     "supported_bitrates": [1000000, 500000, 250000]
   },
   "safety_warnings": [
-    "WICHTIG BEI V1.1: Im STM32-DFU-Modus kann PA2 auf HIGH gehen. PA2 steuert auf dieser Revision den Hotend-MOSFET. Deshalb 12/24-V-VIN und die Heizung vollständig trennen und das Board ausschließlich über USB speisen."
+    "WICHTIG NUR BEI V1.1: Im STM32-DFU-Modus kann PA2 den Hotend-MOSFET einschalten. Deshalb EBB-VIN und Hotend-Versorgung trennen; der Klipper-Rechner bleibt eingeschaltet."
   ],
   "workflow": {
     "dfu_usb_id": "0483:df11",
     "klipper_service": "klipper",
     "enter_dfu_steps": [
-      "Drucker ausschalten. 12/24-V-VIN, Hotend und CAN-Kabel vollständig vom EBB trennen.",
+      "Klipper-Rechner und Druckersteuerung eingeschaltet lassen. Nur am EBB 12/24-V-VIN, Hotend und CAN-Stecker vollständig trennen.",
       "Den Jumper USB_5V setzen. Das Board darf jetzt ausschließlich über USB versorgt werden.",
       "EBB mit einem Daten-USB-Kabel am Klipper-Rechner anschließen.",
       "BOOT gedrückt halten, RESET kurz drücken und wieder loslassen, danach BOOT loslassen."

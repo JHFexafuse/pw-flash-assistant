@@ -82,6 +82,17 @@ class FlashWorkflow:
         if not self.katapult_dir.exists():
             if self.runner.dry_run or self.ui.confirm("Katapult ist noch nicht vorhanden. Jetzt laden?", default=True):
                 self.runner.run(["git", "clone", "https://github.com/Arksine/katapult.git", str(self.katapult_dir)])
+        if not self.runner.dry_run and not (self.katapult_dir / ".git").is_dir():
+            raise AssistantError(
+                f"{self.katapult_dir} ist kein Git-Checkout. Eine aktuelle Katapult-Version kann nicht sichergestellt werden."
+            )
+        self.runner.run(["git", "-C", str(self.katapult_dir), "pull", "--ff-only"])
+        revision = self.runner.run(
+            ["git", "-C", str(self.katapult_dir), "rev-parse", "--short", "HEAD"],
+            capture=True,
+        ).stdout.strip()
+        if revision:
+            self.ui.ok(f"Katapult ist aktuell (Revision {revision}).")
         if not self.klipper_dir.exists() and not self.runner.dry_run:
             raise AssistantError(f"Klipper wurde nicht unter {self.klipper_dir} gefunden. Bitte zuerst Klipper installieren.")
         self.ui.ok("Grundvoraussetzungen sind erfüllt.")
@@ -97,7 +108,7 @@ class FlashWorkflow:
             firmware="katapult",
             bitrate=self.bitrate,
         )
-        self.ui.ok("Katapult wurde passend zum Board kompiliert.")
+        self.ui.ok("Katapult-Konfiguration wurde geprüft und frisch kompiliert.")
         return output
 
     def _enter_dfu(self) -> None:
@@ -118,7 +129,7 @@ class FlashWorkflow:
         self.ui.warn("Der nächste Schritt löscht den bisherigen Firmwarebereich des Boards.")
         if not self.ui.confirm("Katapult jetzt auf dieses EBB schreiben?", default=False):
             raise AssistantError("Vor dem Flashen abgebrochen.")
-        self.runner.run(
+        result = self.runner.run(
             [
                 "sudo",
                 "dfu-util",
@@ -131,9 +142,25 @@ class FlashWorkflow:
                 str(firmware),
                 "-d",
                 self.profile.workflow.get("dfu_usb_id", "0483:df11"),
-            ]
+            ],
+            check=False,
+            capture=True,
         )
-        self.ui.ok("Katapult wurde installiert.")
+        if result.stdout:
+            print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
+        if result.returncode:
+            transferred = "File downloaded successfully" in result.stdout
+            if result.returncode == 74 and transferred:
+                self.ui.warn(
+                    "dfu-util meldet beim automatischen Neustart einen Statusfehler, obwohl das Image vollständig "
+                    "übertragen wurde. Als installiert gilt Katapult erst nach der folgenden CAN-Prüfung."
+                )
+            else:
+                raise AssistantError(
+                    f"Katapult-Übertragung fehlgeschlagen (dfu-util-Code {result.returncode})."
+                )
+        else:
+            self.ui.ok("Katapult-Image wurde vollständig übertragen; die Funktionsprüfung folgt am CAN-Bus.")
 
     def _move_to_can(self) -> None:
         self.ui.title("Von USB auf CAN wechseln")
@@ -168,7 +195,7 @@ class FlashWorkflow:
         nodes = [uuid for uuid, app in self._query_nodes() if app == "katapult"]
         if len(nodes) != 1:
             raise AssistantError(f"Erwartet wurde genau ein Katapult-Gerät, gefunden: {len(nodes)}.")
-        self.ui.ok(f"Katapult-UUID gefunden: {nodes[0]}")
+        self.ui.ok(f"Katapult-Installation verifiziert. UUID: {nodes[0]}")
         return nodes[0]
 
     def _build_klipper(self) -> Path:

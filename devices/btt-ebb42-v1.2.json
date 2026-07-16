@@ -13,13 +13,13 @@
     "supported_bitrates": [1000000, 500000, 250000]
   },
   "safety_warnings": [
-    "Während des Flashens dürfen Heizung und Motoren nicht versorgt werden. Das EBB ausschließlich über USB speisen."
+    "Den Klipper-Rechner eingeschaltet lassen. Vor dem Setzen des USB_5V-Jumpers nur das EBB von seiner 12/24-V- und CAN-Verbindung trennen."
   ],
   "workflow": {
     "dfu_usb_id": "0483:df11",
     "klipper_service": "klipper",
     "enter_dfu_steps": [
-      "Drucker ausschalten und das EBB vollständig von 12/24 V sowie vom CAN-Kabel trennen.",
+      "Klipper-Rechner und Druckersteuerung eingeschaltet lassen. Nur den CAN-Stecker einschließlich 12/24-V-Versorgung vom EBB abziehen.",
       "Den Jumper USB_5V setzen. Dadurch wird das EBB für diesen Schritt über USB versorgt.",
       "EBB mit einem Daten-USB-Kabel am Klipper-Rechner anschließen.",
       "BOOT gedrückt halten, RESET kurz drücken und wieder loslassen, danach BOOT loslassen."
