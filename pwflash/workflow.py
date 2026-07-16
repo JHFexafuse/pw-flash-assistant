@@ -79,9 +79,8 @@ class FlashWorkflow:
             for warning in self.profile.data.get("safety_warnings", []):
                 self.ui.warn(str(warning))
         else:
-            self.ui.info("Ablauf: Vorhandenes Katapult verwenden und ausschließlich Klipper per CAN aktualisieren")
-            self.ui.warn("Katapult wird in diesem Modus nicht neu installiert oder überschrieben.")
-        if not self.ui.confirm("Sind Boardversion und Sicherheitsangaben korrekt?"):
+            self.ui.info("Ablauf: Mittels Katapult-Bootloader Klipper aktualisieren")
+        if not self.ui.confirm("Stimmt die Auswahl überein?"):
             raise AssistantError("Vom Benutzer abgebrochen.")
 
     def _preflight(self) -> None:
@@ -257,7 +256,7 @@ class FlashWorkflow:
         self.ui.ok(f"{self.can_interface} verwendet die erwartete Bitrate.")
 
     def _existing_klipper_uuid(self) -> str:
-        self.ui.title("Vorhandenes Katapult verwenden")
+        self.ui.title("Zielgerät")
         try:
             uuid = find_canbus_uuid(self.printer_config, self.mcu_section)
         except AssistantError as exc:
@@ -267,11 +266,6 @@ class FlashWorkflow:
             ) from exc
         self.ui.info(f"Zielabschnitt: [mcu {self.mcu_section}]")
         self.ui.info(f"CAN-UUID: {uuid}")
-        if not self.ui.confirm(
-            "Ist dies das Board mit bereits installiertem Katapult, dessen Klipper-Firmware aktualisiert werden soll?",
-        ):
-            raise AssistantError("Klipper-Aktualisierung vom Benutzer abgebrochen.")
-        self.ui.ok("Katapult bleibt unverändert; das Flashwerkzeug fordert den Bootloader automatisch über CAN an.")
         return uuid
 
     def _query_nodes(self) -> list[tuple[str, str]]:
@@ -307,9 +301,7 @@ class FlashWorkflow:
             firmware="klipper",
             bitrate=self.bitrate,
         )
-        self.ui.ok(
-            f"Klipper wurde mit passendem {self.profile.hardware['bootloader_offset']}-Offset kompiliert."
-        )
+        self.ui.ok("Klipper-Firmware wurde kompiliert.")
         return output
 
     def _flash_klipper(self, uuid: str, firmware: Path) -> None:
