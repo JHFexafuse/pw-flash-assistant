@@ -15,6 +15,14 @@ ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_PROFILE_DIR = ROOT / "devices"
 
 
+class BackToMenu(Exception):
+    pass
+
+
+class ExitRequested(Exception):
+    pass
+
+
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description="Geführter Firmware-Assistent für Klipper-Druckerboards")
     result.add_argument("command", nargs="?", choices=["install", "list", "validate", "doctor"], help="Aktion")
@@ -39,7 +47,12 @@ def select_profile(ui: UI, profiles: list[DeviceProfile], requested: str | None)
                 return profile
         raise AssistantError(f"Unbekanntes Geräteprofil: {requested}")
     options = [(str(index), profile.name) for index, profile in enumerate(profiles, start=1)]
+    options.extend([("b", "Zurück zum Hauptmenü"), ("q", "Beenden")])
     selected = ui.choose("Boardversion auswählen", options)
+    if selected == "b":
+        raise BackToMenu
+    if selected == "q":
+        raise ExitRequested
     return profiles[int(selected) - 1]
 
 
@@ -50,7 +63,12 @@ def select_bitrate(ui: UI, profile: DeviceProfile, requested: int | None) -> int
             raise AssistantError(f"{requested} wird von diesem Profil nicht angeboten.")
         return requested
     options = [(str(index), f"{rate:,} Bit/s") for index, rate in enumerate(rates, start=1)]
+    options.extend([("b", "Zurück zum Hauptmenü"), ("q", "Beenden")])
     selected = ui.choose("CAN-Bitrate auswählen", options)
+    if selected == "b":
+        raise BackToMenu
+    if selected == "q":
+        raise ExitRequested
     return rates[int(selected) - 1]
 
 
@@ -83,6 +101,48 @@ def doctor(runner: Runner, interface: str) -> int:
     return 1 if missing else 0
 
 
+def run_install(args: argparse.Namespace, ui: UI, runner: Runner, profiles: list[DeviceProfile]) -> None:
+    profile = select_profile(ui, profiles, args.device)
+    bitrate = select_bitrate(ui, profile, args.bitrate)
+    workflow = FlashWorkflow(
+        profile,
+        bitrate,
+        runner=runner,
+        ui=ui,
+        klipper_dir=args.klipper_dir,
+        katapult_dir=args.katapult_dir,
+        state_dir=args.state_dir,
+        can_interface=args.can_interface,
+    )
+    workflow.run()
+
+
+def interactive_loop(args: argparse.Namespace, ui: UI, runner: Runner, profiles: list[DeviceProfile]) -> int:
+    while True:
+        selected = interactive_command(ui)
+        if selected == "q":
+            return 0
+        if selected == "2":
+            ui.header("Unterstützte Boards")
+            ui.title("Unterstützte Boards")
+            list_devices(profiles)
+            ui.pause("ENTER drücken für das Hauptmenü")
+            continue
+        if selected == "3":
+            ui.header("Systemprüfung")
+            ui.title("Systemprüfung")
+            doctor(runner, args.can_interface)
+            ui.pause("ENTER drücken für das Hauptmenü")
+            continue
+        try:
+            run_install(args, ui, runner, profiles)
+            ui.pause("ENTER drücken für das Hauptmenü")
+        except BackToMenu:
+            continue
+        except ExitRequested:
+            return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     ui = UI(plain=args.plain)
@@ -91,10 +151,7 @@ def main(argv: list[str] | None = None) -> int:
         profiles = load_profiles(args.profiles)
         command = args.command
         if command is None:
-            selected = interactive_command(ui)
-            if selected == "q":
-                return 0
-            command = {"1": "install", "2": "list", "3": "doctor"}[selected]
+            return interactive_loop(args, ui, runner, profiles)
         if command == "list":
             list_devices(profiles)
             return 0
@@ -103,21 +160,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if command == "doctor":
             return doctor(runner, args.can_interface)
-        profile = select_profile(ui, profiles, args.device)
-        bitrate = select_bitrate(ui, profile, args.bitrate)
-        workflow = FlashWorkflow(
-            profile,
-            bitrate,
-            runner=runner,
-            ui=ui,
-            klipper_dir=args.klipper_dir,
-            katapult_dir=args.katapult_dir,
-            state_dir=args.state_dir,
-            can_interface=args.can_interface,
-        )
-        workflow.run()
+        run_install(args, ui, runner, profiles)
         return 0
-    except (AssistantError, ProfileError, KeyboardInterrupt) as exc:
+    except (AssistantError, ProfileError, BackToMenu, ExitRequested, KeyboardInterrupt) as exc:
         ui.error(str(exc) if str(exc) else "Abgebrochen.")
         return 1
 
