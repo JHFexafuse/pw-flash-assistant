@@ -198,10 +198,18 @@ def run_update(args: argparse.Namespace, ui: UI, runner: Runner, profiles: list[
             )
         profile = select_profile(ui, update_profiles, args.device)
         ui.info(f"Zuordnung: [mcu {device.section}] / {device.uuid} → {profile.name}")
-        if not ui.confirm("Diese Gerätezuordnung dauerhaft speichern?"):
+        mapping_prompt = (
+            "Diese Gerätezuordnung für den Dry Run verwenden?"
+            if runner.dry_run
+            else "Diese Gerätezuordnung dauerhaft speichern?"
+        )
+        if not ui.confirm(mapping_prompt):
             raise AssistantError("Ohne bestätigte Gerätezuordnung wird kein Update ausgeführt.")
-        inventory.bind(device, profile.id)
-        ui.ok("Gerätezuordnung wurde gespeichert.")
+        if runner.dry_run:
+            ui.info("Dry Run: Die Gerätezuordnung wird nicht gespeichert.")
+        else:
+            inventory.bind(device, profile.id)
+            ui.ok("Gerätezuordnung wurde gespeichert.")
     else:
         ui.ok(f"Gespeicherte Zuordnung: [mcu {device.section}] → {profile.name}")
     current_bitrate = can_link_bitrate(runner, args.can_interface)

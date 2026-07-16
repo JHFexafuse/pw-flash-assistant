@@ -29,6 +29,7 @@ class InteractiveMenuTests(unittest.TestCase):
         self.assertEqual(0, result)
         self.assertIn("btt-ebb42-v1.2", output)
         self.assertEqual(2, output.count("\nHauptmenü\n"))
+
     def test_back_from_board_selection_returns_to_main_menu(self) -> None:
         result, output = self.run_menu(["1", "b", "q"])
         self.assertEqual(0, result)
@@ -68,6 +69,40 @@ class ProfileFilteringTests(unittest.TestCase):
         names = [profile.name for profile in matching_update_profiles(load_profiles(ROOT / "devices"), "eddy")]
         self.assertEqual(2, len(names))
         self.assertTrue(all("Eddy Duo" in name for name in names))
+
+
+class DryRunTests(unittest.TestCase):
+    def test_update_dry_run_does_not_write_inventory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            printer = root / "printer.cfg"
+            state = root / "state"
+            printer.write_text("[mcu CanHead]\ncanbus_uuid: 93741c9204fa\n", encoding="utf-8")
+            argv = [
+                "update",
+                "--plain",
+                "--dry-run",
+                "--profiles",
+                str(ROOT / "devices"),
+                "--printer-config",
+                str(printer),
+                "--state-dir",
+                str(state),
+                "--device",
+                "btt-ebb42-v1.2",
+                "--bitrate",
+                "250000",
+            ]
+            output = io.StringIO()
+            with (
+                patch("builtins.input", side_effect=["1", "j"]),
+                patch("pwflash.cli.FlashWorkflow.run"),
+                redirect_stdout(output),
+            ):
+                result = main(argv)
+            self.assertEqual(0, result)
+            self.assertFalse((state / "inventory.json").exists())
+            self.assertIn("Gerätezuordnung wird nicht gespeichert", output.getvalue())
 
 
 if __name__ == "__main__":
