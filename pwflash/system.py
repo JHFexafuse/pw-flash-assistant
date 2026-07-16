@@ -104,3 +104,7 @@ def parse_klipper_nodes(output: str) -> list[tuple[str, str]]:
         flags=re.IGNORECASE,
     )
     return [(uuid.lower(), app.lower()) for uuid, app in matches]
+
+
+def klipper_flash_verified(output: str) -> bool:
+    return "Verification Complete" in output and "Programming Complete" in output

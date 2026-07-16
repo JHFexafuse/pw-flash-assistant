@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
+from .config_update import find_canbus_uuid, update_canbus_uuid
 from .kconfig import build_firmware
 from .profiles import DeviceProfile
 from .system import (
     AssistantError,
     Runner,
     can_link_bitrate,
+    klipper_flash_verified,
     missing_commands,
     parse_katapult_nodes,
     parse_klipper_nodes,
@@ -28,6 +31,8 @@ class FlashWorkflow:
         klipper_dir: Path,
         katapult_dir: Path,
         state_dir: Path,
+        printer_config: Path,
+        mcu_section: str,
         can_interface: str = "can0",
     ) -> None:
         self.profile = profile
@@ -37,6 +42,8 @@ class FlashWorkflow:
         self.klipper_dir = klipper_dir.expanduser()
         self.katapult_dir = katapult_dir.expanduser()
         self.state_dir = state_dir.expanduser()
+        self.printer_config = printer_config.expanduser()
+        self.mcu_section = mcu_section
         self.can_interface = can_interface
 
     def run(self) -> None:
@@ -220,20 +227,38 @@ class FlashWorkflow:
         tool = self.katapult_dir / "scripts" / "flashtool.py"
         self.runner.run(["sudo", "systemctl", "stop", service], check=False)
         try:
-            self.runner.run(
-                ["python3", str(tool), "-i", self.can_interface, "-f", str(firmware), "-u", uuid]
+            flash_result = self.runner.run(
+                ["python3", str(tool), "-i", self.can_interface, "-f", str(firmware), "-u", uuid],
+                check=False,
+                capture=True,
             )
+            if flash_result.stdout:
+                print(flash_result.stdout, end="" if flash_result.stdout.endswith("\n") else "\n")
+            if flash_result.returncode:
+                raise AssistantError(f"Klipper-Flash fehlgeschlagen (Code {flash_result.returncode}).")
             if not self.runner.dry_run:
                 query = self.klipper_dir / "scripts" / "canbus_query.py"
-                result = self.runner.run(
-                    ["python3", str(query), self.can_interface],
-                    check=False,
-                    capture=True,
-                )
-                nodes = parse_klipper_nodes(result.stdout)
-                if (uuid, "klipper") not in nodes:
+                detected = False
+                for _ in range(15):
+                    result = self.runner.run(
+                        ["python3", str(query), self.can_interface],
+                        check=False,
+                        capture=True,
+                    )
+                    if (uuid, "klipper") in parse_klipper_nodes(result.stdout):
+                        detected = True
+                        break
+                    time.sleep(1)
+                if detected:
+                    self.ui.ok(f"Klipper-Gerät {uuid} antwortet am CAN-Bus.")
+                elif klipper_flash_verified(flash_result.stdout):
+                    self.ui.warn(
+                        "Das Klipper-Image wurde geschrieben und per SHA verifiziert. Die zusätzliche CAN-Suche "
+                        "erhielt während des Neustarts keine Antwort; Klipper oder Mainsail kann das Gerät dennoch bereits erkennen."
+                    )
+                else:
                     raise AssistantError(
-                        "Das Flashwerkzeug meldete Erfolg, aber das Board antwortet anschließend nicht als Klipper-Gerät."
+                        "Das Flashwerkzeug meldete keinen verifizierbaren Abschluss und das Board antwortet nicht auf die CAN-Suche."
                     )
         finally:
             self.runner.run(["sudo", "systemctl", "start", service], check=False)
@@ -246,11 +271,30 @@ class FlashWorkflow:
             output_dir.mkdir(parents=True, exist_ok=True)
             config_path.write_text(
                 "# Vom PrintWars Flash Assistant erzeugt\n"
-                "[mcu EBBCan]\n"
+                f"[mcu {self.mcu_section}]\n"
                 f"canbus_uuid: {uuid}\n",
                 encoding="utf-8",
             )
         self.ui.title("Fertig")
         self.ui.ok(f"Board-UUID: {uuid}")
+        if not self.runner.dry_run and self.printer_config.is_file():
+            try:
+                old_uuid = find_canbus_uuid(self.printer_config, self.mcu_section)
+                if old_uuid == uuid:
+                    self.ui.ok(f"[mcu {self.mcu_section}] enthält bereits diese UUID.")
+                else:
+                    self.ui.info(f"Aktuelle UUID in [mcu {self.mcu_section}]: {old_uuid}")
+                    self.ui.info(f"Neue UUID: {uuid}")
+                    if self.ui.confirm(
+                        f"UUID direkt in {self.printer_config} aktualisieren und vorher ein Backup anlegen?",
+                        default=True,
+                    ):
+                        update = update_canbus_uuid(self.printer_config, self.mcu_section, uuid)
+                        self.ui.ok(f"printer.cfg aktualisiert. Backup: {update.backup_path}")
+                        if self.ui.confirm("Klipper-Dienst jetzt neu starten, damit die neue UUID aktiv wird?", default=True):
+                            self.runner.run(["sudo", "systemctl", "restart", self.profile.workflow.get("klipper_service", "klipper")])
+                            self.ui.ok("Klipper-Dienst wurde neu gestartet.")
+            except AssistantError as exc:
+                self.ui.warn(f"printer.cfg wurde nicht automatisch geändert: {exc}")
         self.ui.info(f"MCU-Konfiguration: {config_path}")
         self.ui.info("Diese Datei kann nun in die Druckerkonfiguration übernommen und um die EBB-Pinbelegung ergänzt werden.")

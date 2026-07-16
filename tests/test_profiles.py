@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pwflash.kconfig import build_firmware, validate_config, write_seed_config
 from pwflash.profiles import load_profiles
-from pwflash.system import AssistantError, Result, parse_katapult_nodes, parse_klipper_nodes
+from pwflash.system import AssistantError, Result, klipper_flash_verified, parse_katapult_nodes, parse_klipper_nodes
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,7 +27,9 @@ class ProfileTests(unittest.TestCase):
         profiles = {profile.id: profile for profile in load_profiles(ROOT / "devices")}
         instructions = " ".join(profiles["btt-ebb42-v1.2"].workflow["enter_dfu_steps"])
         self.assertNotIn("Drucker ausschalten", instructions)
-        self.assertIn("eingeschaltet lassen", instructions)
+        self.assertNotIn("trennen", instructions)
+        self.assertIn("spannungsfreien EBB", instructions)
+        self.assertLess(instructions.index("USB_5V"), instructions.index("Daten-USB"))
 
     def test_bitrate_is_rendered(self) -> None:
         profile = load_profiles(ROOT / "devices")[0]
@@ -49,6 +51,10 @@ class KatapultOutputTests(unittest.TestCase):
     def test_parse_klipper_query(self) -> None:
         output = "Found canbus_uuid=4220d6e9e9f9, Application: Klipper\n"
         self.assertEqual([("4220d6e9e9f9", "klipper")], parse_klipper_nodes(output))
+
+    def test_successful_flash_output_is_verified_without_query_response(self) -> None:
+        output = "Verification Complete: SHA = 742165...\nProgramming Complete\n"
+        self.assertTrue(klipper_flash_verified(output))
 
 
 class FakeBuildRunner:

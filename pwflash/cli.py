@@ -32,6 +32,8 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--klipper-dir", type=Path, default=Path("~/klipper"))
     result.add_argument("--katapult-dir", type=Path, default=Path("~/katapult"))
     result.add_argument("--state-dir", type=Path, default=Path("~/.local/share/pwflash"))
+    result.add_argument("--printer-config", type=Path, default=Path("~/printer_data/config/printer.cfg"))
+    result.add_argument("--mcu-section", default="CanHead", help="MCU-Abschnitt in printer.cfg")
     result.add_argument("--profiles", type=Path, default=DEFAULT_PROFILE_DIR)
     result.add_argument("--dry-run", action="store_true", help="Ablauf zeigen, nichts ausführen")
     result.add_argument("--verbose", action="store_true")
@@ -112,6 +114,8 @@ def run_install(args: argparse.Namespace, ui: UI, runner: Runner, profiles: list
         klipper_dir=args.klipper_dir,
         katapult_dir=args.katapult_dir,
         state_dir=args.state_dir,
+        printer_config=args.printer_config,
+        mcu_section=args.mcu_section,
         can_interface=args.can_interface,
     )
     workflow.run()
