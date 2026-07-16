@@ -1,6 +1,6 @@
 # PrintWars Flash Assistant
 
-Ein geführter, KIAUH-artiger Terminalassistent für Klipper-Druckerboards. Die erste Gerätefamilie ist das BIGTREETECH EBB42 V1.0, V1.1 und V1.2 über CAN.
+Ein geführter, KIAUH-artiger Terminalassistent für Klipper-Druckerboards. Unterstützt werden derzeit das BIGTREETECH EBB42 V1.0, V1.1 und V1.2 sowie Eddy Duo über CAN.
 
 ## Ziel
 
@@ -31,15 +31,34 @@ Bestätigungsfragen verlangen ausdrücklich `j` oder `n`; eine leere Eingabe lö
 
 ## Installation
 
-Das Projekt auf den Klipper-Rechner kopieren oder aus seinem späteren GitHub-Repository klonen. Danach:
+Den folgenden Block vollständig kopieren und auf dem Klipper-Rechner im Terminal einfügen:
 
 ```bash
-cd ~/printwars-flash-assistant
+cd ~
+git clone https://github.com/JHFexafuse/pw-flash-assistant.git
+cd ~/pw-flash-assistant
 bash install.sh
+~/.local/bin/pwflash
+```
+
+Das Tool wird bewusst nicht mit `sudo` gestartet. Nur einzelne administrative Schritte fragen bei Bedarf nach dem Passwort. Falls `pwflash` nach einer neuen Anmeldung direkt gefunden wird, genügt künftig:
+
+```bash
 pwflash
 ```
 
-Es wird bewusst nicht als `root` gestartet. Benötigte administrative Schritte fragen einzeln nach `sudo`.
+## Aktualisieren
+
+Eine vorhandene Installation wird mit diesem vollständigen Block aktualisiert und anschließend gestartet:
+
+```bash
+cd ~/pw-flash-assistant
+git pull --ff-only
+bash install.sh
+~/.local/bin/pwflash
+```
+
+Die gespeicherten Gerätezuordnungen unter `~/.local/share/pwflash/` bleiben dabei erhalten.
 
 ## Testlauf ohne Hardwareänderungen
 
